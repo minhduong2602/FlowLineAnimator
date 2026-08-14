@@ -1,0 +1,6 @@
+{
+  "name": "VectorFlow Artboard Studio",
+  "description": "Interactive vector artboard allowing users to draw custom lines, curves, and paths with automatic continuous flow animation, customizable gradients, dash patterns, and export tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

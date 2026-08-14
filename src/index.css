@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .glow-cyan {
+    filter: drop-shadow(0 0 8px rgba(0, 242, 255, 0.6));
+  }
+  .glow-purple {
+    filter: drop-shadow(0 0 12px rgba(112, 0, 255, 0.4));
+  }
+  .grid-bg {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+body {
+  background-color: #050505;
+  color: #e0e0e0;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 242, 255, 0.3);
+}
