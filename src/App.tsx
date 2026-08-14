@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import gifshot from 'gifshot';
+
 import { 
   DrawingPath, 
   DrawTool, 
@@ -260,7 +260,7 @@ export default function App() {
       const width = 720;
       const height = 480;
       const frameCount = 18;
-      const frames: string[] = [];
+      const frames: any[] = [];
 
       for (let f = 0; f < frameCount; f++) {
         const canvas = document.createElement('canvas');
@@ -277,27 +277,31 @@ export default function App() {
         });
 
         renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent);
-        frames.push(canvas.toDataURL('image/png'));
+        frames.push({ data: canvas, delay: 70 });
       }
 
-      gifshot.createGIF({
-        images: frames,
-        interval: 0.07,
-        gifWidth: width,
-        gifHeight: height,
-        numWorkers: 2
-      }, (obj: any) => {
-        if (!obj.error) {
-          const url = obj.image;
+      import('modern-gif').then(({ encode }) => {
+        encode({
+          width,
+          height,
+          frames,
+          format: 'blob'
+        }).then((blob: Blob) => {
+          const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
           a.download = filename;
           a.click();
+          // Revoke the object URL after download
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
           resolve();
-        } else {
-          console.error('GIF export error:', obj.error);
-          resolve(); // Resolve so batch export continues
-        }
+        }).catch((err: any) => {
+          console.error('GIF export error:', err);
+          resolve();
+        });
+      }).catch(err => {
+        console.error('Failed to load modern-gif', err);
+        resolve();
       });
     });
   };
