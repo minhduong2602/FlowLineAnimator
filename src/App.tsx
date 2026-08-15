@@ -18,7 +18,6 @@ import { MetricsBar } from './components/MetricsBar';
 import { ExportModal } from './components/ExportModal';
 import { ImportSvgModal } from './components/ImportSvgModal';
 import { 
-  createPresetAnchors, 
   renderArtboardToCanvas,
   anchorsToPathString,
   calculateBoundingBox
@@ -30,83 +29,13 @@ const INITIAL_SETTINGS: ArtboardSettings = {
   showGrid: true,
   gridSize: 40,
   snapToGrid: false,
+  snapToAnchor: true,
   globalSpeed: 1.0,
   pencilSmoothness: 6
 };
 
 const getInitialPaths = (): DrawingPath[] => {
-  const wave = createPresetAnchors('wave', 900, 600);
-  const spiral = createPresetAnchors('spiral', 900, 600);
-  const infinity = createPresetAnchors('infinity', 900, 600);
-
-  return [
-    {
-      id: 'path-wave',
-      name: 'Cyber Sine Wave',
-      anchors: wave.anchors,
-      closed: wave.closed,
-      pathType: 'preset',
-      presetType: 'wave',
-      strokeWidth: 4,
-      color: '#00F2FF',
-      gradientId: 'cyberpunk',
-      dashPreset: 'neon',
-      customDashLength: 24,
-      customGapLength: 12,
-      cornerRadius: 12,
-      lineCap: 'round',
-      lineJoin: 'round',
-      flowSpeed: 1.5,
-      flowDirection: 'forward',
-      showGlow: true,
-      opacity: 1,
-      enabled: true
-    },
-    {
-      id: 'path-spiral',
-      name: 'Quantum Spiral',
-      anchors: spiral.anchors,
-      closed: spiral.closed,
-      pathType: 'preset',
-      presetType: 'spiral',
-      strokeWidth: 3.5,
-      color: '#7000FF',
-      gradientId: 'sunset',
-      dashPreset: 'racing',
-      customDashLength: 16,
-      customGapLength: 10,
-      cornerRadius: 8,
-      lineCap: 'round',
-      lineJoin: 'round',
-      flowSpeed: 1.8,
-      flowDirection: 'forward',
-      showGlow: true,
-      opacity: 1,
-      enabled: true
-    },
-    {
-      id: 'path-infinity',
-      name: 'Infinity Matrix Loop',
-      anchors: infinity.anchors,
-      closed: infinity.closed,
-      pathType: 'preset',
-      presetType: 'infinity',
-      strokeWidth: 4,
-      color: '#00FF66',
-      gradientId: 'emerald',
-      dashPreset: 'neon',
-      customDashLength: 28,
-      customGapLength: 14,
-      cornerRadius: 16,
-      lineCap: 'round',
-      lineJoin: 'round',
-      flowSpeed: 1.2,
-      flowDirection: 'reverse',
-      showGlow: true,
-      opacity: 1,
-      enabled: true
-    }
-  ];
+  return [];
 };
 
 interface AppState {
@@ -306,36 +235,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [handleUndo, handleRedo, handleDeletePath, selectedPathId]);
 
-  const handleAddPresetPath = (presetType: 'wave' | 'spiral' | 'infinity' | 'zigzag' | 'star' | 'circle') => {
-    const res = createPresetAnchors(presetType, 900, 600);
-    const id = `preset-${Date.now()}`;
-    const newPath: DrawingPath = {
-      id,
-      name: `${presetType.toUpperCase()} Vector`,
-      anchors: res.anchors,
-      closed: res.closed,
-      pathType: 'preset',
-      presetType,
-      strokeWidth: 4,
-      color: '#00F2FF',
-      gradientId: presetType === 'wave' ? 'cyberpunk' : presetType === 'spiral' ? 'sunset' : 'emerald',
-      dashPreset: 'neon',
-      customDashLength: 20,
-      customGapLength: 10,
-      cornerRadius: 10,
-      lineCap: 'round',
-      lineJoin: 'round',
-      flowSpeed: 1.5,
-      flowDirection: 'forward',
-      showGlow: true,
-      opacity: 1,
-      enabled: true
-    };
-    updatePathsAndCommit(prev => [...prev, newPath]);
-    setSelectedPathId(id);
-    setActiveTool('direct-select');
-  };
-
   const handleImportSVG = (svgData: string) => {
     const extractedPaths = extractPathsFromSvgString(svgData);
     if (extractedPaths.length === 0) return;
@@ -347,7 +246,6 @@ export default function App() {
         name: `Imported Vector ${paths.length + idx + 1}`,
         anchors: parsed.anchors,
         closed: parsed.closed,
-        pathType: 'preset',
         strokeWidth: 4,
         color: '#00F2FF',
         gradientId: 'cyberpunk',
@@ -359,7 +257,7 @@ export default function App() {
         lineJoin: 'round',
         flowSpeed: 1.5,
         flowDirection: 'forward',
-        showGlow: true,
+        showGlow: false,
         opacity: 1,
         enabled: true
       };
@@ -638,7 +536,6 @@ export default function App() {
             onSelectPath={setSelectedPathId}
             onUpdatePath={handleUpdatePath}
             onDeletePath={handleDeletePath}
-            onAddPresetPath={handleAddPresetPath}
             settings={settings}
             onUpdateSettings={(upd) => setSettings(prev => ({ ...prev, ...upd }))}
           />

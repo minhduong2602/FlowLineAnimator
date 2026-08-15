@@ -301,170 +301,7 @@ export function fitSmoothBezierAnchors(rawPoints: Point[], smoothness = 5): Anch
   return anchors;
 }
 
-/**
- * Generate Preset Shapes with rich Bezier anchors
- */
-export function createPresetAnchors(type: string, width = 800, height = 600): { anchors: AnchorPoint[]; closed: boolean } {
-  const cx = width / 2;
-  const cy = height / 2;
 
-  if (type === 'wave') {
-    const anchors: AnchorPoint[] = [];
-    const amplitude = 120;
-    const waveCount = 3;
-    const stepX = (width - 160) / (waveCount * 2);
-
-    for (let i = 0; i <= waveCount * 2; i++) {
-      const x = 80 + i * stepX;
-      const y = cy + (i % 2 === 1 ? (i % 4 === 1 ? -amplitude : amplitude) : 0);
-      const handleDx = stepX * 0.45;
-
-      anchors.push({
-        id: uid('anchor'),
-        point: { x, y },
-        handleIn: i > 0 ? { x: x - handleDx, y } : null,
-        handleOut: i < waveCount * 2 ? { x: x + handleDx, y } : null,
-        isCorner: false
-      });
-    }
-    return { anchors, closed: false };
-  }
-
-  if (type === 'infinity') {
-    const anchors: AnchorPoint[] = [];
-    const rx = 180;
-    const ry = 100;
-
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx, y: cy },
-      handleIn: { x: cx - 40, y: cy + 40 },
-      handleOut: { x: cx + 40, y: cy - 40 },
-      isCorner: true
-    });
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx + rx, y: cy - ry * 0.6 },
-      handleIn: { x: cx + rx - 50, y: cy - ry },
-      handleOut: { x: cx + rx + 30, y: cy },
-      isCorner: false
-    });
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx + rx, y: cy + ry * 0.6 },
-      handleIn: { x: cx + rx + 30, y: cy },
-      handleOut: { x: cx + rx - 50, y: cy + ry },
-      isCorner: false
-    });
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx, y: cy },
-      handleIn: { x: cx + 40, y: cy + 40 },
-      handleOut: { x: cx - 40, y: cy - 40 },
-      isCorner: true
-    });
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx - rx, y: cy - ry * 0.6 },
-      handleIn: { x: cx - rx + 50, y: cy - ry },
-      handleOut: { x: cx - rx - 30, y: cy },
-      isCorner: false
-    });
-    anchors.push({
-      id: uid('anchor'),
-      point: { x: cx - rx, y: cy + ry * 0.6 },
-      handleIn: { x: cx - rx - 30, y: cy },
-      handleOut: { x: cx - rx + 50, y: cy + ry },
-      isCorner: false
-    });
-
-    return { anchors, closed: true };
-  }
-
-  if (type === 'spiral') {
-    const rawPoints: Point[] = [];
-    for (let i = 0; i < 180; i += 3) {
-      const angle = i * 0.12;
-      const r = i * 1.5;
-      rawPoints.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
-    }
-    return { anchors: fitSmoothBezierAnchors(rawPoints, 6), closed: false };
-  }
-
-  if (type === 'circle') {
-    const r = 150;
-    const kappa = 0.5522847498307935; // optimal handle length for circle
-    const handleLen = r * kappa;
-
-    const anchors: AnchorPoint[] = [
-      {
-        id: uid('anchor'),
-        point: { x: cx, y: cy - r },
-        handleIn: { x: cx - handleLen, y: cy - r },
-        handleOut: { x: cx + handleLen, y: cy - r },
-        isCorner: false
-      },
-      {
-        id: uid('anchor'),
-        point: { x: cx + r, y: cy },
-        handleIn: { x: cx + r, y: cy - handleLen },
-        handleOut: { x: cx + r, y: cy + handleLen },
-        isCorner: false
-      },
-      {
-        id: uid('anchor'),
-        point: { x: cx, y: cy + r },
-        handleIn: { x: cx + handleLen, y: cy + r },
-        handleOut: { x: cx - handleLen, y: cy + r },
-        isCorner: false
-      },
-      {
-        id: uid('anchor'),
-        point: { x: cx - r, y: cy },
-        handleIn: { x: cx - r, y: cy + handleLen },
-        handleOut: { x: cx - r, y: cy - handleLen },
-        isCorner: false
-      }
-    ];
-
-    return { anchors, closed: true };
-  }
-
-  if (type === 'star') {
-    const pointsCount = 5;
-    const outerR = 150;
-    const innerR = 65;
-    const anchors: AnchorPoint[] = [];
-
-    for (let i = 0; i < pointsCount * 2; i++) {
-      const r = i % 2 === 0 ? outerR : innerR;
-      const angle = (i * Math.PI) / pointsCount - Math.PI / 2;
-      anchors.push({
-        id: uid('anchor'),
-        point: { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) },
-        handleIn: null,
-        handleOut: null,
-        isCorner: true
-      });
-    }
-
-    return { anchors, closed: true };
-  }
-
-  // Default ZigZag
-  const anchors: AnchorPoint[] = [];
-  const step = 80;
-  for (let x = 120, i = 0; x <= width - 120; x += step, i++) {
-    anchors.push({
-      id: uid('anchor'),
-      point: { x, y: i % 2 === 0 ? cy - 100 : cy + 100 },
-      handleIn: null,
-      handleOut: null,
-      isCorner: true
-    });
-  }
-  return { anchors, closed: false };
-}
 
 /**
  * Draw a single DrawingPath onto a standard Canvas 2D Rendering Context
@@ -513,9 +350,13 @@ export function drawPathToCanvas(
     if (preset && preset.id !== 'solid') {
       let dashArr: number[] = [];
       if (preset.id === 'custom') {
-        dashArr = [path.customDashLength || 20, path.customGapLength || 10];
-        if (path.customDash2 && path.customGap2) {
-          dashArr.push(path.customDash2, path.customGap2);
+        if (path.customDashArray !== undefined) {
+          dashArr = path.customDashArray.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+        } else {
+          dashArr = [path.customDashLength || 20, path.customGapLength || 10];
+          if (path.customDash2 && path.customGap2) {
+            dashArr.push(path.customDash2, path.customGap2);
+          }
         }
       } else {
         dashArr = preset.array.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
@@ -537,9 +378,13 @@ export function drawPathToCanvas(
   if (preset && preset.id !== 'solid') {
     let dashArr: number[] = [];
     if (preset.id === 'custom') {
-      dashArr = [path.customDashLength || 20, path.customGapLength || 10];
-      if (path.customDash2 && path.customGap2) {
-        dashArr.push(path.customDash2, path.customGap2);
+      if (path.customDashArray !== undefined) {
+        dashArr = path.customDashArray.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+      } else {
+        dashArr = [path.customDashLength || 20, path.customGapLength || 10];
+        if (path.customDash2 && path.customGap2) {
+          dashArr.push(path.customDash2, path.customGap2);
+        }
       }
     } else {
       dashArr = preset.array.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));

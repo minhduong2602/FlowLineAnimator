@@ -57,8 +57,7 @@ export interface DrawingPath {
   anchors: AnchorPoint[];
   points?: Point[];
   closed?: boolean;
-  pathType: string;
-  presetType?: 'wave' | 'spiral' | 'infinity' | 'zigzag' | 'star' | 'circle';
+  pathType?: string;
   strokeWidth: number;
   strokeAlign?: 'center' | 'inside' | 'outside';
   lineCap?: 'butt' | 'round' | 'square';
@@ -70,6 +69,7 @@ export interface DrawingPath {
   color: string;
   gradientId: string;
   dashPreset: DashPresetId;
+  customDashArray?: string;
   customDashLength: number;
   customGapLength: number;
   customDash2?: number;
@@ -86,6 +86,7 @@ export interface ArtboardSettings {
   showGrid: boolean;
   gridSize: number;
   snapToGrid: boolean;
+  snapToAnchor?: boolean;
   globalSpeed: number;
   pencilSmoothness: number; // 1 to 10
 }
@@ -106,6 +107,7 @@ export interface StreamConfig {
 export interface ChartSettings {
   curveType: CurveType;
   dashPreset: DashPresetId;
+  customDashArray?: string;
   customDashLength: number;
   customGapLength: number;
   flowSpeed: number;
