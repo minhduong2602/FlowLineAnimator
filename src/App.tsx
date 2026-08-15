@@ -231,10 +231,36 @@ export default function App() {
   };
 
   const handleUpdatePath = (id: string, updates: Partial<DrawingPath>) => {
-    setAppState(prev => ({
-      ...prev,
-      paths: prev.paths.map(p => p.id === id ? { ...p, ...updates } : p)
-    }));
+    setAppState(prev => {
+      let nextPaths = prev.paths.map(p => p.id === id ? { ...p, ...updates } : p);
+
+      // Flowchart: Resolve sticky bindings
+      if (updates.anchors) {
+        const updatedPath = nextPaths.find(p => p.id === id);
+        if (updatedPath) {
+          nextPaths = nextPaths.map(p => {
+            if (p.id === id) return p;
+            let pChanged = false;
+            const newAnchors = p.anchors.map(anc => {
+              if (anc.boundTo && anc.boundTo.pathId === id) {
+                const targetAnchor = updatedPath.anchors.find(a => a.id === anc.boundTo!.anchorId);
+                if (targetAnchor && (anc.point.x !== targetAnchor.point.x || anc.point.y !== targetAnchor.point.y)) {
+                  pChanged = true;
+                  return { ...anc, point: targetAnchor.point };
+                }
+              }
+              return anc;
+            });
+            return pChanged ? { ...p, anchors: newAnchors } : p;
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        paths: nextPaths
+      };
+    });
   };
 
   const handleDeletePath = (id: string) => {

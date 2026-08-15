@@ -19,7 +19,8 @@ import {
   CornerUpRight, 
   Check, 
   X,
-  Maximize2
+  Maximize2,
+  GitMerge
 } from 'lucide-react';
 
 interface ArtboardCanvasProps {
@@ -68,6 +69,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   const [penAnchors, setPenAnchors] = useState<AnchorPoint[]>([]);
   const [currentCursorPos, setCurrentCursorPos] = useState<Point | null>(null);
   const [isDraggingPenHandle, setIsDraggingPenHandle] = useState<boolean>(false);
+  const [connectorStart, setConnectorStart] = useState<{ point: Point; boundTo?: { pathId: string; anchorId: string } | null } | null>(null);
 
   // Direct Selection / Anchor Editing state
   const [selectedAnchorIndex, setSelectedAnchorIndex] = useState<number | null>(null);
@@ -140,6 +142,8 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         setActiveTool('pen');
       } else if (e.key.toLowerCase() === 'n') {
         setActiveTool('pencil');
+      } else if (e.key.toLowerCase() === 'c') {
+        setActiveTool('connector');
       }
     };
 
@@ -160,6 +164,24 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     }
 
     return { x, y };
+  };
+
+  const findNearestAnchor = (pos: Point, excludePathId?: string, threshold = 20) => {
+    let nearest: { pathId: string; anchorId: string; point: Point } | null = null;
+    let minDist = threshold;
+
+    paths.forEach(path => {
+      if (path.id === excludePathId) return;
+      path.anchors.forEach(anc => {
+        const d = distance(pos, anc.point);
+        if (d < minDist) {
+          minDist = d;
+          nearest = { pathId: path.id, anchorId: anc.id, point: anc.point };
+        }
+      });
+    });
+
+    return nearest;
   };
 
   // Finish Pen Tool path and commit to layer
@@ -305,6 +327,16 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       return;
     }
 
+    // 2.5. CONNECTOR TOOL
+    if (activeTool === 'connector') {
+      setIsDrawing(true);
+      const snap = findNearestAnchor(pos);
+      const startPos = snap ? snap.point : pos;
+      setConnectorStart({ point: startPos, boundTo: snap ? { pathId: snap.pathId, anchorId: snap.anchorId } : null });
+      setRawPencilPoints([startPos, pos]);
+      return;
+    }
+
     // 3. PEN / CURVE TOOL
     if (activeTool === 'pen' || activeTool === 'curve') {
       // Check if clicked near start point to close curve
@@ -368,6 +400,14 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     // Line drawing
     if (isDrawing && activeTool === 'line') {
       setRawPencilPoints(prev => [prev[0], pos]);
+      return;
+    }
+
+    // Connector drawing
+    if (isDrawing && activeTool === 'connector') {
+      const snap = findNearestAnchor(pos);
+      const endPos = snap ? snap.point : pos;
+      setRawPencilPoints(prev => [prev[0], endPos]);
       return;
     }
 
@@ -476,6 +516,19 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
     let committed = false;
     if (dragTarget) {
+      if (dragTarget.type === 'anchor' && selectedPathId && selectedPath) {
+        // Evaluate stickiness
+        const snap = currentCursorPos ? findNearestAnchor(currentCursorPos, selectedPathId) : null;
+        const updated = [...selectedPath.anchors];
+        const anc = updated[dragTarget.index];
+        if (snap) {
+          updated[dragTarget.index] = { ...anc, point: snap.point, boundTo: { pathId: snap.pathId, anchorId: snap.anchorId } };
+        } else {
+          updated[dragTarget.index] = { ...anc, boundTo: null };
+        }
+        onUpdatePath(selectedPathId, { anchors: updated });
+      }
+
       setDragTarget(null);
       setDragStartPoint(null);
       onCommitHistory?.();
@@ -519,6 +572,46 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
       onAddPath(newPath);
       onSelectPath(newPathId);
+      setRawPencilPoints([]);
+      setActiveTool('direct-select');
+      return;
+    }
+
+    // Complete connector stroke
+    if (isDrawing && activeTool === 'connector') {
+      setIsDrawing(false);
+      if (rawPencilPoints.length === 2 && connectorStart) {
+        const snap = currentCursorPos ? findNearestAnchor(currentCursorPos) : null;
+        const endPos = snap ? snap.point : rawPencilPoints[1];
+
+        const newPathId = `connector-${Date.now()}`;
+        const newPath: DrawingPath = {
+          id: newPathId,
+          name: `Connector ${paths.length + 1}`,
+          anchors: [
+            { id: uid('anchor'), point: connectorStart.point, handleIn: null, handleOut: null, isCorner: true, boundTo: connectorStart.boundTo },
+            { id: uid('anchor'), point: endPos, handleIn: null, handleOut: null, isCorner: true, boundTo: snap ? { pathId: snap.pathId, anchorId: snap.anchorId } : null }
+          ],
+          closed: false,
+          pathType: 'connector',
+          routing: 'elbow',
+          strokeWidth: 4,
+          color: '#6366f1',
+          gradientId: 'cyberpunk',
+          dashPreset: 'solid',
+          customDashLength: 0,
+          customGapLength: 0,
+          flowSpeed: 1,
+          flowDirection: 'forward',
+          showGlow: false,
+          opacity: 1,
+          enabled: true
+        };
+
+        onAddPath(newPath);
+        onSelectPath(newPathId);
+      }
+      setConnectorStart(null);
       setRawPencilPoints([]);
       setActiveTool('direct-select');
       return;
@@ -644,6 +737,20 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         >
           <Minus className="w-4 h-4" />
           <span className="hidden sm:inline">Line</span>
+        </button>
+
+        {/* Connector Tool (C) */}
+        <button
+          onClick={() => setActiveTool('connector')}
+          className={`flex items-center gap-2 px-3 py-2 rounded-[24px] text-xs font-semibold transition-all ${
+            activeTool === 'connector'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
+          }`}
+          title="Flowchart Connector (C) - Snap to anchors"
+        >
+          <GitMerge className="w-4 h-4" />
+          <span className="hidden sm:inline">Connector</span>
         </button>
 
         <div className="w-[1px] h-6 bg-[var(--color-hairline)] mx-1" />
@@ -782,7 +889,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           {/* Render Saved Vector Paths */}
           {paths.map(path => {
             if (!path.enabled || !path.anchors || path.anchors.length === 0) return null;
-            const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0);
+            const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
             const dashArray = getDashArray(path);
             const offset = dashOffsets[path.id] || 0;
             const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
@@ -821,6 +928,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
               {/* Main vector stroke */}
               <path
+                id={`${path.id}-stroke`}
                 d={d}
                 fill="none"
                 stroke={strokePaint}
@@ -831,6 +939,19 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 strokeDashoffset={offset}
                 opacity={path.opacity}
               />
+
+              {/* Label */}
+              {path.label && (
+                <text 
+                  fill="var(--color-ink)" 
+                  className="font-bold text-[12px] tracking-wide"
+                  style={{ paintOrder: 'stroke fill', stroke: 'var(--color-paper)', strokeWidth: '4px', strokeLinecap: 'round', strokeLinejoin: 'round' }}
+                >
+                  <textPath href={`#${path.id}-stroke`} startOffset="50%" textAnchor="middle" dominantBaseline="middle">
+                    {path.label}
+                  </textPath>
+                </text>
+              )}
 
               {/* Selection Halo */}
               {isSelected && (
@@ -983,12 +1104,17 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           </g>
         )}
 
-          {/* Live Pencil / Freehand / Line Stroke Preview */}
-          {isDrawing && (activeTool === 'pencil' || activeTool === 'freehand' || activeTool === 'line') && rawPencilPoints.length > 1 && (
+          {/* Live Pencil / Freehand / Line / Connector Stroke Preview */}
+          {isDrawing && (activeTool === 'pencil' || activeTool === 'freehand' || activeTool === 'line' || activeTool === 'connector') && rawPencilPoints.length > 1 && (
             <path
               d={
                 activeTool === 'line' 
                   ? `M ${rawPencilPoints[0].x} ${rawPencilPoints[0].y} L ${rawPencilPoints[1].x} ${rawPencilPoints[1].y}`
+                  : activeTool === 'connector'
+                  ? anchorsToPathString([
+                      { id: '1', point: rawPencilPoints[0] },
+                      { id: '2', point: rawPencilPoints[1] }
+                    ], false, 0, 'elbow')
                   : anchorsToPathString(fitSmoothBezierAnchors(rawPencilPoints, settings.pencilSmoothness || 6))
               }
               fill="none"
@@ -1016,6 +1142,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">A</kbd> Direct Select</span>
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">P</kbd> Pen Tool</span>
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">N</kbd> Smooth Pencil</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">C</kbd> Connector</span>
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Del</kbd> Remove Anchor</span>
         </div>
       </div>

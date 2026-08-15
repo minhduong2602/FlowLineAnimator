@@ -9,9 +9,10 @@ export interface AnchorPoint {
   handleIn?: Point | null;
   handleOut?: Point | null;
   isCorner?: boolean;
+  boundTo?: { pathId: string; anchorId: string } | null;
 }
 
-export type DrawTool = 'select' | 'direct-select' | 'pen' | 'pencil' | 'curve' | 'line' | 'add-anchor' | 'delete-anchor' | 'freehand';
+export type DrawTool = 'select' | 'direct-select' | 'pen' | 'pencil' | 'curve' | 'line' | 'add-anchor' | 'delete-anchor' | 'freehand' | 'connector';
 
 export type CurveType = 
   | 'monotoneX'
@@ -63,6 +64,9 @@ export interface DrawingPath {
   lineCap?: 'butt' | 'round' | 'square';
   lineJoin?: 'miter' | 'round' | 'bevel';
   cornerRadius?: number; // 0 to 50px corner rounding
+  routing?: 'bezier' | 'straight' | 'elbow' | 'smooth';
+  label?: string;
+  lineJumps?: boolean;
   color: string;
   gradientId: string;
   dashPreset: DashPresetId;

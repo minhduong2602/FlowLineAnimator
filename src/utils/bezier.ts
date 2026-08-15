@@ -16,11 +16,58 @@ export const distance = (p1: Point, p2: Point): number => {
 /**
  * Convert an array of AnchorPoints into an SVG path `d` string with optional corner radius support
  */
-export const anchorsToPathString = (anchors: AnchorPoint[], closed = false, cornerRadius = 0): string => {
+export const anchorsToPathString = (anchors: AnchorPoint[], closed = false, cornerRadius = 0, routing: DrawingPath['routing'] = 'bezier'): string => {
   if (!anchors || anchors.length === 0) return '';
   if (anchors.length === 1) return `M ${anchors[0].point.x} ${anchors[0].point.y}`;
 
   const n = anchors.length;
+
+  // Handle Flowchart Routing types first
+  if (routing === 'straight') {
+    let d = `M ${anchors[0].point.x} ${anchors[0].point.y}`;
+    for (let i = 1; i < n; i++) {
+      d += ` L ${anchors[i].point.x} ${anchors[i].point.y}`;
+    }
+    if (closed) d += ' Z';
+    return d;
+  }
+
+  if (routing === 'elbow') {
+    let d = `M ${anchors[0].point.x} ${anchors[0].point.y}`;
+    for (let i = 1; i < n; i++) {
+      const prev = anchors[i - 1].point;
+      const curr = anchors[i].point;
+      // Midpoint elbow
+      const midX = prev.x + (curr.x - prev.x) / 2;
+      d += ` L ${midX} ${prev.y} L ${midX} ${curr.y} L ${curr.x} ${curr.y}`;
+    }
+    if (closed) {
+      const prev = anchors[n - 1].point;
+      const curr = anchors[0].point;
+      const midX = prev.x + (curr.x - prev.x) / 2;
+      d += ` L ${midX} ${prev.y} L ${midX} ${curr.y} Z`;
+    }
+    return d;
+  }
+
+  if (routing === 'smooth') {
+    // Basic smooth spline via bezier
+    let d = `M ${anchors[0].point.x} ${anchors[0].point.y}`;
+    for (let i = 1; i < n; i++) {
+      const prev = anchors[i - 1].point;
+      const curr = anchors[i].point;
+      // create handle at halfway point horizontally
+      const midX = prev.x + (curr.x - prev.x) / 2;
+      d += ` C ${midX} ${prev.y}, ${midX} ${curr.y}, ${curr.x} ${curr.y}`;
+    }
+    if (closed) {
+      const prev = anchors[n - 1].point;
+      const curr = anchors[0].point;
+      const midX = prev.x + (curr.x - prev.x) / 2;
+      d += ` C ${midX} ${prev.y}, ${midX} ${curr.y}, ${curr.x} ${curr.y} Z`;
+    }
+    return d;
+  }
 
   // If cornerRadius > 0, check if we need to fillet corner vertices
   if (cornerRadius > 0 && n >= 2) {

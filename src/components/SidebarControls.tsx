@@ -16,7 +16,8 @@ import {
   Sparkle,
   Gauge,
   Palette,
-  RotateCw
+  RotateCw,
+  GitMerge
 } from 'lucide-react';
 
 interface SidebarControlsProps {
@@ -587,6 +588,48 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* 5. FLOWCHART ROUTING & CONNECTORS */}
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5 mb-8">
+                  <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
+                      <GitMerge className="w-3.5 h-3.5 text-[var(--color-ink)]" />
+                      Flow Routing
+                    </span>
+                    <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">Connectors</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[var(--color-mid-gray)] font-medium text-xs">Line Routing Mode</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {['bezier', 'straight', 'elbow', 'smooth'].map(r => (
+                        <button
+                          key={r}
+                          onClick={() => onUpdatePath(selectedPath.id, { routing: r as any })}
+                          className={`px-2 py-1.5 rounded-[12px] text-[10px] font-bold uppercase transition-all ${
+                            (selectedPath.routing || 'bezier') === r
+                              ? 'bg-[var(--color-ink)] text-[var(--color-paper)] border border-[var(--color-ink)]'
+                              : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] border border-[var(--color-hairline)] hover:text-[var(--color-ink)]'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[var(--color-mid-gray)] font-medium text-xs">Mid-line Text Label</span>
+                    <input
+                      type="text"
+                      value={selectedPath.label || ''}
+                      onChange={(e) => onUpdatePath(selectedPath.id, { label: e.target.value })}
+                      placeholder="e.g. Yes / No"
+                      className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] px-2.5 py-1.5 text-xs text-[var(--color-ink)] focus:outline-none focus:border-[#00F2FF]"
+                    />
+                  </div>
+                </div>
+
               </div>
             )}
           </div>
