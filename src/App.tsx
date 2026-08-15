@@ -16,11 +16,13 @@ import { SidebarControls } from './components/SidebarControls';
 import { ArtboardCanvas } from './components/ArtboardCanvas';
 import { MetricsBar } from './components/MetricsBar';
 import { ExportModal } from './components/ExportModal';
+import { ImportSvgModal } from './components/ImportSvgModal';
 import { 
   createPresetAnchors, 
   renderArtboardToCanvas,
   anchorsToPathString 
 } from './utils/bezier';
+import { extractPathsFromSvgString, parseSVGPathToAnchors } from './utils/svgImport';
 
 const INITIAL_SETTINGS: ArtboardSettings = {
   backgroundColor: '#ffffff',
@@ -130,6 +132,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [exportModalOpen, setExportModalOpen] = useState<boolean>(false);
+  const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingTime, setRecordingTime] = useState<number>(4);
   const [isExportingGIF, setIsExportingGIF] = useState<boolean>(false);
@@ -303,6 +306,40 @@ export default function App() {
     };
     updatePathsAndCommit(prev => [...prev, newPath]);
     setSelectedPathId(id);
+    setActiveTool('direct-select');
+  };
+
+  const handleImportSVG = (svgData: string) => {
+    const extractedPaths = extractPathsFromSvgString(svgData);
+    if (extractedPaths.length === 0) return;
+
+    const newPaths: DrawingPath[] = extractedPaths.map((d, idx) => {
+      const parsed = parseSVGPathToAnchors(d);
+      return {
+        id: `imported-${Date.now()}-${idx}`,
+        name: `Imported Vector ${paths.length + idx + 1}`,
+        anchors: parsed.anchors,
+        closed: parsed.closed,
+        pathType: 'preset',
+        strokeWidth: 4,
+        color: '#00F2FF',
+        gradientId: 'cyberpunk',
+        dashPreset: 'neon',
+        customDashLength: 20,
+        customGapLength: 10,
+        cornerRadius: 0,
+        lineCap: 'round',
+        lineJoin: 'round',
+        flowSpeed: 1.5,
+        flowDirection: 'forward',
+        showGlow: true,
+        opacity: 1,
+        enabled: true
+      };
+    });
+
+    updatePathsAndCommit(prev => [...prev, ...newPaths]);
+    setSelectedPathId(newPaths[newPaths.length - 1].id);
     setActiveTool('direct-select');
   };
 
@@ -525,6 +562,7 @@ export default function App() {
         onTogglePlay={() => setIsPlaying(!isPlaying)}
         onReset={() => setAppState({ paths: getInitialPaths(), history: [getInitialPaths()], historyIndex: 0 })}
         onOpenExport={() => setExportModalOpen(true)}
+        onOpenImport={() => setImportModalOpen(true)}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         sidebarOpen={sidebarOpen}
         isFullscreen={isFullscreen}
@@ -586,6 +624,12 @@ export default function App() {
         recordingTime={recordingTime}
         isExportingGIF={isExportingGIF}
         gifProgressText={gifProgressText}
+      />
+
+      <ImportSvgModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImport={handleImportSVG}
       />
     </div>
   );

@@ -530,7 +530,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 </div>
 
                 {/* 4. CONTINUOUS FLOW ANIMATION VECTOR */}
-                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5">
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5 mb-8">
                   <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
                       <Gauge className="w-3.5 h-3.5 text-[var(--color-ink)]" />

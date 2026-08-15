@@ -5,6 +5,7 @@ import {
   Pause, 
   RotateCcw, 
   Download, 
+  Upload,
   Maximize2, 
   Minimize2, 
   Undo2,
@@ -17,6 +18,7 @@ interface HeaderProps {
   onTogglePlay: () => void;
   onReset: () => void;
   onOpenExport: () => void;
+  onOpenImport: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
   isFullscreen: boolean;
@@ -33,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onTogglePlay,
   onReset,
   onOpenExport,
+  onOpenImport,
   onToggleSidebar,
   sidebarOpen,
   isFullscreen,
@@ -112,6 +115,16 @@ export const Header: React.FC<HeaderProps> = ({
           title="Reset Data"
         >
           <RotateCcw className="w-4 h-4" />
+        </button>
+
+        {/* Import Button */}
+        <button
+          onClick={onOpenImport}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-[18px] bg-transparent border border-[var(--color-hairline)] text-[var(--color-ink)] text-[14px] font-medium hover:bg-[var(--color-canvas)] transition-all"
+          title="Import SVG"
+        >
+          <Upload className="w-4 h-4" />
+          <span className="hidden lg:inline">Import</span>
         </button>
 
         {/* Export / Record Button */}
