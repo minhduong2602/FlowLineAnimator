@@ -496,108 +496,8 @@ export function drawPathToCanvas(
   }
   ctx.strokeStyle = strokeStyle;
 
-  // Function to trace path geometry with corner radius
-  const trace = () => {
-    const cr = path.cornerRadius || 0;
-    const n = path.anchors.length;
-
-    if (cr > 0 && n >= 2) {
-      const points = path.anchors.map(a => a.point);
-      const isCornerAnchor = path.anchors.map(anc => {
-        const hasHandles = (anc.handleIn && (anc.handleIn.x !== anc.point.x || anc.handleIn.y !== anc.point.y)) ||
-                           (anc.handleOut && (anc.handleOut.x !== anc.point.x || anc.handleOut.y !== anc.point.y));
-        return Boolean(anc.isCorner) || !hasHandles;
-      });
-
-      if (isCornerAnchor.every(Boolean)) {
-        ctx.beginPath();
-        if (path.closed && n > 2) {
-          for (let i = 0; i < n; i++) {
-            const prev = points[(i - 1 + n) % n];
-            const curr = points[i];
-            const next = points[(i + 1) % n];
-
-            const d1 = distance(prev, curr);
-            const d2 = distance(curr, next);
-            const r = Math.min(cr, d1 / 2.1, d2 / 2.1);
-
-            if (r > 0) {
-              const startX = curr.x + ((prev.x - curr.x) / d1) * r;
-              const startY = curr.y + ((prev.y - curr.y) / d1) * r;
-              const endX = curr.x + ((next.x - curr.x) / d2) * r;
-              const endY = curr.y + ((next.y - curr.y) / d2) * r;
-
-              if (i === 0) ctx.moveTo(startX, startY);
-              else ctx.lineTo(startX, startY);
-              ctx.quadraticCurveTo(curr.x, curr.y, endX, endY);
-            } else {
-              if (i === 0) ctx.moveTo(curr.x, curr.y);
-              else ctx.lineTo(curr.x, curr.y);
-            }
-          }
-          ctx.closePath();
-          return;
-        } else {
-          ctx.beginPath();
-          ctx.moveTo(points[0].x, points[0].y);
-          for (let i = 1; i < n - 1; i++) {
-            const prev = points[i - 1];
-            const curr = points[i];
-            const next = points[i + 1];
-
-            const d1 = distance(prev, curr);
-            const d2 = distance(curr, next);
-            const r = Math.min(cr, d1 / 2.1, d2 / 2.1);
-
-            if (r > 0) {
-              const startX = curr.x + ((prev.x - curr.x) / d1) * r;
-              const startY = curr.y + ((prev.y - curr.y) / d1) * r;
-              const endX = curr.x + ((next.x - curr.x) / d2) * r;
-              const endY = curr.y + ((next.y - curr.y) / d2) * r;
-
-              ctx.lineTo(startX, startY);
-              ctx.quadraticCurveTo(curr.x, curr.y, endX, endY);
-            } else {
-              ctx.lineTo(curr.x, curr.y);
-            }
-          }
-          ctx.lineTo(points[n - 1].x, points[n - 1].y);
-          return;
-        }
-      }
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(path.anchors[0].point.x, path.anchors[0].point.y);
-
-    for (let i = 1; i < path.anchors.length; i++) {
-      const prev = path.anchors[i - 1];
-      const curr = path.anchors[i];
-
-      const cp1 = prev.handleOut || prev.point;
-      const cp2 = curr.handleIn || curr.point;
-
-      if (cp1.x === prev.point.x && cp1.y === prev.point.y && cp2.x === curr.point.x && cp2.y === curr.point.y) {
-        ctx.lineTo(curr.point.x, curr.point.y);
-      } else {
-        ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, curr.point.x, curr.point.y);
-      }
-    }
-
-    if (path.closed && path.anchors.length > 2) {
-      const last = path.anchors[path.anchors.length - 1];
-      const first = path.anchors[0];
-      const cp1 = last.handleOut || last.point;
-      const cp2 = first.handleIn || first.point;
-
-      if (cp1.x === last.point.x && cp1.y === last.point.y && cp2.x === first.point.x && cp2.y === first.point.y) {
-        ctx.closePath();
-      } else {
-        ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, first.point.x, first.point.y);
-        ctx.closePath();
-      }
-    }
-  };
+  const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
+  const p2d = new Path2D(d);
 
   // Render Glow if enabled
   if (path.showGlow) {
@@ -626,8 +526,7 @@ export function drawPathToCanvas(
       ctx.setLineDash([]);
     }
 
-    trace();
-    ctx.stroke();
+    ctx.stroke(p2d);
     ctx.restore();
   }
 
@@ -650,10 +549,8 @@ export function drawPathToCanvas(
   } else {
     ctx.setLineDash([]);
   }
-
-  trace();
-  ctx.stroke();
-
+  ctx.stroke(p2d);
+  
   ctx.restore();
 }
 
@@ -709,7 +606,8 @@ export function renderArtboardToCanvas(
   backgroundColor = '#050505',
   showGrid = true,
   transparent = false,
-  offset = { x: 0, y: 0 }
+  offset = { x: 0, y: 0 },
+  scale = 1
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -721,12 +619,13 @@ export function renderArtboardToCanvas(
   ctx.clearRect(0, 0, w, h);
 
   ctx.save();
+  ctx.scale(scale, scale);
   ctx.translate(offset.x, offset.y);
 
   // Fill background if not transparent
   if (!transparent && backgroundColor !== 'transparent') {
     ctx.fillStyle = backgroundColor;
-    ctx.fillRect(-offset.x, -offset.y, w, h);
+    ctx.fillRect(-offset.x, -offset.y, w / scale, h / scale);
 
     // Grid
     if (showGrid) {
@@ -734,16 +633,16 @@ export function renderArtboardToCanvas(
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.lineWidth = 1;
       const step = 40;
-      for (let x = (-offset.x % step) - step; x < w - offset.x; x += step) {
+      for (let x = (-offset.x % step) - step; x < (w / scale) - offset.x; x += step) {
         ctx.beginPath();
         ctx.moveTo(x, -offset.y);
-        ctx.lineTo(x, h - offset.y);
+        ctx.lineTo(x, (h / scale) - offset.y);
         ctx.stroke();
       }
-      for (let y = (-offset.y % step) - step; y < h - offset.y; y += step) {
+      for (let y = (-offset.y % step) - step; y < (h / scale) - offset.y; y += step) {
         ctx.beginPath();
         ctx.moveTo(-offset.x, y);
-        ctx.lineTo(w - offset.x, y);
+        ctx.lineTo((w / scale) - offset.x, y);
         ctx.stroke();
       }
       ctx.restore();
@@ -754,7 +653,7 @@ export function renderArtboardToCanvas(
   paths.forEach(path => {
     if (path.enabled) {
       const lineOffset = dashOffsets[path.id] || 0;
-      drawPathToCanvas(ctx, path, lineOffset, w, h);
+      drawPathToCanvas(ctx, path, lineOffset, w / scale, h / scale);
     }
   });
 

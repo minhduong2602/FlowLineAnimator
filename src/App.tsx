@@ -383,17 +383,17 @@ export default function App() {
   };
 
   // High-Resolution PNG Export with optional Transparency
-  const handleExportPNG = (transparent: boolean = true) => {
+  const handleExportPNG = (transparent: boolean = true, scale: number = 1) => {
     const bbox = calculateBoundingBox(paths);
     const width = Math.max(bbox.width, 100);
     const height = Math.max(bbox.height, 100);
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
 
     const offsets: Record<string, number> = {};
     paths.forEach(p => { offsets[p.id] = 0; });
-    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y });
+    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale);
 
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
@@ -403,7 +403,7 @@ export default function App() {
   };
 
   // Scalable SVG Vector Markup Export
-  const handleExportSVG = () => {
+  const handleExportSVG = (scale: number = 1) => {
     const svgElem = document.getElementById('artboard-svg');
     if (!svgElem) return;
     const svgClone = svgElem.cloneNode(true) as SVGSVGElement;
@@ -414,7 +414,11 @@ export default function App() {
 
     // Adjust viewBox to the calculated bounding box
     const bbox = calculateBoundingBox(paths);
-    svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${Math.max(bbox.width, 100)} ${Math.max(bbox.height, 100)}`);
+    const w = Math.max(bbox.width, 100);
+    const h = Math.max(bbox.height, 100);
+    svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${w} ${h}`);
+    svgClone.setAttribute('width', String(w * scale));
+    svgClone.setAttribute('height', String(h * scale));
 
     svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     const svgData = new XMLSerializer().serializeToString(svgClone);
@@ -439,7 +443,8 @@ export default function App() {
   const generateGifForPaths = async (
     targetPaths: DrawingPath[], 
     transparent: boolean, 
-    filename: string
+    filename: string,
+    scale: number = 1
   ): Promise<void> => {
     const bbox = calculateBoundingBox(targetPaths);
     const width = Math.max(bbox.width, 100);
@@ -449,8 +454,8 @@ export default function App() {
 
     for (let f = 0; f < frameCount; f++) {
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
 
       const offsets: Record<string, number> = {};
       targetPaths.forEach(p => {
@@ -461,14 +466,14 @@ export default function App() {
         offsets[p.id] = f * (actualCycle / frameCount) * speed * dir;
       });
 
-      renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent, { x: -bbox.x, y: -bbox.y });
+      renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent, { x: -bbox.x, y: -bbox.y }, scale);
       frames.push(canvas);
     }
 
     try {
       const buffer = await encode({
-        width,
-        height,
+        width: width * scale,
+        height: height * scale,
         frames: frames.map(canvas => ({
           data: canvas,
           delay: 70, // ~14 fps
@@ -491,12 +496,14 @@ export default function App() {
   const handleExportGIF = async (options: { 
     transparent: boolean; 
     exportSeparateLayers: boolean; 
-    singleLayerId?: string 
+    singleLayerId?: string;
+    scale: number;
   }) => {
     setIsExportingGIF(true);
 
     try {
       const enabledPaths = paths.filter(p => p.enabled);
+      const scale = options.scale || 1;
 
       if (options.exportSeparateLayers) {
         // Export each enabled layer as an individual animated GIF file
@@ -504,7 +511,7 @@ export default function App() {
           const layer = enabledPaths[i];
           setGifProgressText(`Rendering Layer ${i + 1} of ${enabledPaths.length}: "${layer.name}"...`);
           const safeName = layer.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`);
+          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`, scale);
           // Slight delay between downloads
           await new Promise(r => setTimeout(r, 400));
         }
@@ -514,12 +521,12 @@ export default function App() {
         if (target) {
           setGifProgressText(`Rendering "${target.name}" GIF...`);
           const safeName = target.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`);
+          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`, scale);
         }
       } else {
         // Export full composition
         setGifProgressText(`Rendering Animated Composition (${options.transparent ? 'Transparent' : 'Solid'})...`);
-        await generateGifForPaths(enabledPaths, options.transparent, 'vector-flow-artboard.gif');
+        await generateGifForPaths(enabledPaths, options.transparent, 'vector-flow-artboard.gif', scale);
       }
     } catch (err) {
       console.error('GIF generation error:', err);
@@ -530,15 +537,17 @@ export default function App() {
   };
 
   // Real-time Canvas Video Recording (WebM) with optional Transparency
-  const handleStartRecordingVideo = (transparent: boolean = false) => {
+  const handleStartRecordingVideo = (transparent: boolean = false, scale: number = 1) => {
     setIsRecording(true);
     setRecordingTime(4);
 
-    const width = 800;
-    const height = 600;
+    const bbox = calculateBoundingBox(paths);
+    const width = Math.max(bbox.width, 100);
+    const height = Math.max(bbox.height, 100);
+
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
 
     const stream = canvas.captureStream(30);
     const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
@@ -575,7 +584,7 @@ export default function App() {
         currentOffsets[p.id] = (currentOffsets[p.id] || 0) + (1 / 30) * speed * dir;
       });
 
-      renderArtboardToCanvas(canvas, paths, currentOffsets, settings.backgroundColor, settings.showGrid, transparent);
+      renderArtboardToCanvas(canvas, paths, currentOffsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale);
 
       if (elapsed < 4) {
         requestAnimationFrame(recordLoop);

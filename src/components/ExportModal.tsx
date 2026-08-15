@@ -19,11 +19,11 @@ interface ExportModalProps {
   onClose: () => void;
   paths: DrawingPath[];
   selectedPathId: string | null;
-  onExportPNG: (transparent?: boolean) => void;
-  onExportSVG: () => void;
+  onExportPNG: (transparent: boolean, scale: number) => void;
+  onExportSVG: (scale: number) => void;
   onExportJSON: () => void;
-  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string }) => void;
-  onStartRecordingVideo: (transparent?: boolean) => void;
+  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string; scale: number }) => void;
+  onStartRecordingVideo: (transparent: boolean, scale: number) => void;
   isRecording: boolean;
   recordingTime: number;
   isExportingGIF: boolean;
@@ -47,6 +47,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 }) => {
   const [transparentBg, setTransparentBg] = useState<boolean>(true);
   const [exportMode, setExportMode] = useState<'all-in-one' | 'separate-layers' | 'selected-layer'>('all-in-one');
+  const [exportScale, setExportScale] = useState<number>(1);
 
   if (!isOpen) return null;
 
@@ -71,6 +72,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
+          
+          {/* Export Size Multiplier */}
+          <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)]">
+                Resolution Multiplier
+              </span>
+              <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">{exportScale}x Scale</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 3, 4].map(scale => (
+                <button
+                  key={scale}
+                  onClick={() => setExportScale(scale)}
+                  className={`py-2 rounded-[24px] border text-xs font-bold transition-all ${
+                    exportScale === scale
+                      ? 'bg-[var(--color-ink)] border-[var(--color-ink)] text-[var(--color-paper)]'
+                      : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-canvas)]'
+                  }`}
+                >
+                  {scale}x
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Transparency & Canvas Background Selector */}
           <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -178,7 +205,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 onExportGIF({
                   transparent: transparentBg,
                   exportSeparateLayers: exportMode === 'separate-layers',
-                  singleLayerId: exportMode === 'selected-layer' && selectedPath ? selectedPath.id : undefined
+                  singleLayerId: exportMode === 'selected-layer' && selectedPath ? selectedPath.id : undefined,
+                  scale: exportScale
                 });
               }}
               disabled={isExportingGIF || enabledPaths.length === 0}
@@ -219,7 +247,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
 
             <button
-              onClick={() => onStartRecordingVideo(transparentBg)}
+              onClick={() => onStartRecordingVideo(transparentBg, exportScale)}
               disabled={isRecording}
               className={`w-full py-2.5 rounded-[24px] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
                 isRecording 
@@ -249,7 +277,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
-                onClick={() => onExportPNG(transparentBg)}
+                onClick={() => onExportPNG(transparentBg, exportScale)}
                 className="p-3.5 rounded-[24px] bg-[var(--color-paper)] border border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:bg-[var(--color-surface-alt)] flex flex-col items-center text-center gap-2 group transition-all"
               >
                 <div className="p-2.5 rounded-[24px] bg-[var(--color-canvas)] text-[var(--color-ink)] group-hover:scale-110 transition-transform">
@@ -262,7 +290,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </button>
 
               <button
-                onClick={onExportSVG}
+                onClick={() => onExportSVG(exportScale)}
                 className="p-3.5 rounded-[24px] bg-[var(--color-paper)] border border-[var(--color-hairline)] hover:border-indigo-500/40 hover:bg-[var(--color-surface-alt)] flex flex-col items-center text-center gap-2 group transition-all"
               >
                 <div className="p-2.5 rounded-[24px] bg-indigo-500/10 text-indigo-400 group-hover:scale-110 transition-transform">
