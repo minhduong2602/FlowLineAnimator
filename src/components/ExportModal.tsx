@@ -22,7 +22,7 @@ interface ExportModalProps {
   onExportPNG: (transparent: boolean, scale: number) => void;
   onExportSVG: (scale: number) => void;
   onExportJSON: () => void;
-  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string; scale: number }) => void;
+  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string; scale: number; fps: number; duration: number }) => void;
   onStartRecordingVideo: (transparent: boolean, scale: number) => void;
   isRecording: boolean;
   recordingTime: number;
@@ -48,6 +48,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [transparentBg, setTransparentBg] = useState<boolean>(true);
   const [exportMode, setExportMode] = useState<'all-in-one' | 'separate-layers' | 'selected-layer'>('all-in-one');
   const [exportScale, setExportScale] = useState<number>(1);
+  const [gifFps, setGifFps] = useState<number>(15);
+  const [gifDuration, setGifDuration] = useState<number>(2);
 
   if (!isOpen) return null;
 
@@ -199,6 +201,53 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
             </div>
 
+            {/* Quality/Timing Settings */}
+            <div className="space-y-3">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--color-mid-gray)] font-semibold block">Performance Settings</span>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <label className="text-xs font-semibold text-[var(--color-ink)]">Framerate</label>
+                    <span className="text-xs text-[var(--color-mid-gray)]">{gifFps} FPS</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="10" 
+                    max="60" 
+                    step="5"
+                    value={gifFps} 
+                    onChange={e => setGifFps(parseInt(e.target.value))}
+                    className="w-full accent-[var(--color-ink)] h-1 bg-[var(--color-hairline)] rounded-full appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between mt-1 text-[9px] text-[var(--color-mid-gray)]">
+                    <span>10 (Smaller)</span>
+                    <span>60 (Smoother)</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <label className="text-xs font-semibold text-[var(--color-ink)]">Duration</label>
+                    <span className="text-xs text-[var(--color-mid-gray)]">{gifDuration}s</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    step="0.5"
+                    value={gifDuration} 
+                    onChange={e => setGifDuration(parseFloat(e.target.value))}
+                    className="w-full accent-[var(--color-ink)] h-1 bg-[var(--color-hairline)] rounded-full appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between mt-1 text-[9px] text-[var(--color-mid-gray)]">
+                    <span>1s (Fast)</span>
+                    <span>10s (Long)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Action Button for GIF Export */}
             <button
               onClick={() => {
@@ -206,7 +255,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   transparent: transparentBg,
                   exportSeparateLayers: exportMode === 'separate-layers',
                   singleLayerId: exportMode === 'selected-layer' && selectedPath ? selectedPath.id : undefined,
-                  scale: exportScale
+                  scale: exportScale,
+                  fps: gifFps,
+                  duration: gifDuration
                 });
               }}
               disabled={isExportingGIF || enabledPaths.length === 0}

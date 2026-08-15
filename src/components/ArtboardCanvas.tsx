@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { DrawingPath, DrawTool, Point, AnchorPoint, ArtboardSettings } from '../types';
+import { DrawingPath, DrawTool, Point, AnchorPoint, ArtboardSettings, CapType } from '../types';
 import { GRADIENT_PRESETS, DASH_PRESETS } from '../data/presets';
 import { 
   anchorsToPathString, 
@@ -23,7 +23,108 @@ import {
   GitMerge
 } from 'lucide-react';
 
+// ─── Arrow Flow Overlay ────────────────────────────────────────────────────
+// Renders animated chevron arrows flowing along a referenced SVG path element.
+const ArrowFlowOverlay: React.FC<{
+  pathId: string;
+  color: string;
+  arrowSize: number;
+  spacing: number;
+  speed: number;
+  reverse: boolean;
+}> = ({ pathId, color, arrowSize, speed, reverse }) => {
+  const arrowCount = 8;
+  const duration = Math.max(0.3, 20 / speed);
+
+  return (
+    <g className="pointer-events-none">
+      {Array.from({ length: arrowCount }).map((_, i) => {
+        const half = arrowSize / 2;
+        // The chevron points to the right (+x axis)
+        const pts = `0,${half * 0.2} ${arrowSize},${half} 0,${half * 1.8}`;
+
+        return (
+          <polyline
+            key={i}
+            points={pts}
+            fill="none"
+            stroke={color}
+            strokeWidth={Math.max(1, arrowSize * 0.18)}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={0.85}
+          >
+            <animateMotion
+              dur={`${duration}s`}
+              begin={`-${(i / arrowCount) * duration}s`}
+              repeatCount="indefinite"
+              rotate="auto"
+              keyPoints={reverse ? "1;0" : "0;1"}
+              keyTimes="0;1"
+              calcMode="linear"
+            >
+              <mpath href={`#${pathId}`} />
+            </animateMotion>
+          </polyline>
+        );
+      })}
+    </g>
+  );
+};
+
+// ─── Object Along Path ─────────────────────────────────────────────────────
+// Renders a clone of the motion object traveling along a path.
+const MotionObjectOverlay: React.FC<{
+  pathId: string;
+  motionPath: DrawingPath;
+  speed: number;
+}> = ({ pathId, motionPath, speed }) => {
+  const duration = Math.max(0.5, 20 / speed);
+  const w = motionPath.imageWidth || 40;
+  const h = motionPath.imageHeight || 40;
+
+  return (
+    <g className="pointer-events-none">
+      {motionPath.type === 'image' && motionPath.imageUrl ? (
+        <image
+          href={motionPath.imageUrl}
+          width={w}
+          height={h}
+          x={-w / 2}
+          y={-h / 2}
+          opacity={motionPath.opacity ?? 1}
+        >
+          <animateMotion
+            dur={`${duration}s`}
+            repeatCount="indefinite"
+            rotate="auto"
+          >
+            <mpath href={`#${pathId}`} />
+          </animateMotion>
+        </image>
+      ) : (
+        <g opacity={motionPath.opacity ?? 1}>
+          <animateMotion
+            dur={`${duration}s`}
+            repeatCount="indefinite"
+            rotate="auto"
+          >
+            <mpath href={`#${pathId}`} />
+          </animateMotion>
+          {/* We reference the actual vector stroke. We need to center it if possible, but use href will just draw it. 
+              The original path is drawn at its own coordinates. We can offset it to center it on the motion path origin.
+              Actually, if we just <use>, the coordinates might be offset.
+              For now, <use href={`#${motionPath.id}-stroke`} /> will draw the vector path.
+          */}
+          <use href={`#${motionPath.id}-stroke`} x={-(motionPath.x || 0)} y={-(motionPath.y || 0)} />
+        </g>
+      )}
+    </g>
+  );
+};
+
 interface ArtboardCanvasProps {
+
   paths: DrawingPath[];
   selectedPathId: string | null;
   onSelectPath: (id: string | null) => void;
@@ -35,6 +136,7 @@ interface ArtboardCanvasProps {
   activeTool: DrawTool;
   setActiveTool: (tool: DrawTool) => void;
   settings: ArtboardSettings;
+  onUpdateSettings: (settings: Partial<ArtboardSettings>) => void;
   isPlaying: boolean;
 }
 
@@ -43,6 +145,7 @@ type DragTarget =
   | { type: 'handleIn'; index: number }
   | { type: 'handleOut'; index: number }
   | { type: 'wholePath' }
+  | { type: 'resize'; handle: number }
   | null;
 
 export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
@@ -57,6 +160,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   activeTool,
   setActiveTool,
   settings,
+  onUpdateSettings,
   isPlaying
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -75,9 +179,13 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   const [selectedAnchorIndex, setSelectedAnchorIndex] = useState<number | null>(null);
   const [dragTarget, setDragTarget] = useState<DragTarget>(null);
   const [dragStartPoint, setDragStartPoint] = useState<Point | null>(null);
+  const [marqueeStart, setMarqueeStart] = useState<Point | null>(null);
+  const [marqueeEnd, setMarqueeEnd] = useState<Point | null>(null);
 
   // Continuous animation flow offsets
   const [dashOffsets, setDashOffsets] = useState<Record<string, number>>({});
+  // motionOffsets: normalized [0,1] position along path for object-along-path and arrow flow
+  const [motionOffsets, setMotionOffsets] = useState<Record<string, number>>({});
   const animFrameRef = useRef<number | null>(null);
 
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
@@ -85,6 +193,22 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   const [panStart, setPanStart] = useState<Point | null>(null);
 
   const selectedPath = paths.find(p => p.id === selectedPathId);
+
+  // Zoom Handler
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+        onUpdateSettings({ zoom: Math.max(0.1, Math.min(10, (settings.zoom || 1) * zoomDelta)) });
+      }
+    };
+    const svgEl = svgRef.current;
+    if (svgEl) {
+      svgEl.addEventListener('wheel', handleWheel, { passive: false });
+      return () => svgEl.removeEventListener('wheel', handleWheel);
+    }
+  }, [settings.zoom, onUpdateSettings]);
 
   // Animation Loop
   useEffect(() => {
@@ -104,6 +228,20 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           const speed = (path.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45 * dt;
           const direction = path.flowDirection === 'reverse' ? 1 : -1;
           next[path.id] = current + speed * direction;
+        });
+        return next;
+      });
+
+      // Update motion offsets (0→1) for object-along-path
+      setMotionOffsets(prev => {
+        const next = { ...prev };
+        paths.forEach(path => {
+          if (!path.enabled || !path.motionObjectId) return;
+          const current = prev[path.id] || 0;
+          const speed = (path.motionSpeed || 1) * (settings.globalSpeed || 1) * 0.05 * dt;
+          let newVal = current + speed;
+          if (newVal > 1) newVal = path.motionLoop === false ? 0 : newVal - 1;
+          next[path.id] = newVal;
         });
         return next;
       });
@@ -173,8 +311,9 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   const getCanvasCoords = (e: React.MouseEvent<SVGSVGElement> | React.MouseEvent<SVGElement>, applySnap: boolean = true, excludePathId?: string): Point => {
     if (!svgRef.current) return { x: e.clientX, y: e.clientY };
     const rect = svgRef.current.getBoundingClientRect();
-    const rawX = e.clientX - rect.left - pan.x;
-    const rawY = e.clientY - rect.top - pan.y;
+    const zoom = settings.zoom || 1;
+    const rawX = (e.clientX - rect.left - pan.x) / zoom;
+    const rawY = (e.clientY - rect.top - pan.y) / zoom;
     
     let x = rawX;
     let y = rawY;
@@ -386,6 +525,16 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     // Deselect if clicking on empty canvas in selection mode
     if ((activeTool === 'select' || activeTool === 'direct-select') && !dragTarget) {
       setSelectedAnchorIndex(null);
+      onSelectPath(null);
+      setMarqueeStart(pos);
+      setMarqueeEnd(pos);
+    }
+
+    // Shape drawing
+    if (activeTool === 'rect' || activeTool === 'ellipse') {
+      setIsDrawing(true);
+      setRawPencilPoints([pos]);
+      return;
     }
   };
 
@@ -403,6 +552,11 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     const pos = getCanvasCoords(e, true, excludePathId);
     setCurrentCursorPos(pos);
 
+    if (marqueeStart) {
+      setMarqueeEnd(pos);
+      return;
+    }
+
     // Pencil drawing
     if (isDrawing && (activeTool === 'pencil' || activeTool === 'freehand')) {
       setRawPencilPoints(prev => {
@@ -412,6 +566,12 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         }
         return prev;
       });
+      return;
+    }
+
+    // Shape drawing
+    if (isDrawing && (activeTool === 'rect' || activeTool === 'ellipse')) {
+      setRawPencilPoints(prev => [prev[0], pos]);
       return;
     }
 
@@ -457,14 +617,127 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         const dy = posNoSnap.y - dragStartPoint.y;
         
         if (dx !== 0 || dy !== 0) {
-          const updated = selectedPath.anchors.map(anchor => ({
-            ...anchor,
-            point: { x: anchor.point.x + dx, y: anchor.point.y + dy },
-            handleIn: anchor.handleIn ? { x: anchor.handleIn.x + dx, y: anchor.handleIn.y + dy } : null,
-            handleOut: anchor.handleOut ? { x: anchor.handleOut.x + dx, y: anchor.handleOut.y + dy } : null
-          }));
+          if (selectedPath.type === 'image') {
+            onUpdatePath(selectedPathId, {
+              x: (selectedPath.x || 0) + dx,
+              y: (selectedPath.y || 0) + dy
+            });
+          } else {
+            const updated = selectedPath.anchors.map(anchor => ({
+              ...anchor,
+              point: { x: anchor.point.x + dx, y: anchor.point.y + dy },
+              handleIn: anchor.handleIn ? { x: anchor.handleIn.x + dx, y: anchor.handleIn.y + dy } : null,
+              handleOut: anchor.handleOut ? { x: anchor.handleOut.x + dx, y: anchor.handleOut.y + dy } : null
+            }));
 
-          onUpdatePath(selectedPathId, { anchors: updated });
+            onUpdatePath(selectedPathId, { anchors: updated });
+          }
+          setDragStartPoint(posNoSnap);
+        }
+        return;
+      }
+
+      if (dragTarget.type === 'resize' && dragStartPoint) {
+        const posNoSnap = getCanvasCoords(e, false);
+        const dx = posNoSnap.x - dragStartPoint.x;
+        const dy = posNoSnap.y - dragStartPoint.y;
+
+        if (dx !== 0 || dy !== 0) {
+          if (selectedPath.type === 'image') {
+            const minX = 0;
+            const minY = 0;
+            const maxX = selectedPath.imageWidth || 100;
+            const maxY = selectedPath.imageHeight || 100;
+
+            const oldW = maxX - minX;
+            const oldH = maxY - minY;
+            
+            let newMinX = minX;
+            let newMinY = minY;
+            let newMaxX = maxX;
+            let newMaxY = maxY;
+
+            const h = dragTarget.handle;
+            if (h === 0 || h === 3 || h === 5) newMinX += dx;
+            if (h === 2 || h === 4 || h === 7) newMaxX += dx;
+            if (h === 0 || h === 1 || h === 2) newMinY += dy;
+            if (h === 5 || h === 6 || h === 7) newMaxY += dy;
+
+            if (newMaxX - newMinX < 1) newMaxX = newMinX + 1;
+            if (newMaxY - newMinY < 1) newMaxY = newMinY + 1;
+
+            const newW = newMaxX - newMinX;
+            const newH = newMaxY - newMinY;
+
+            // If we resized from the left or top, we need to move the origin
+            const transX = newMinX - minX;
+            const transY = newMinY - minY;
+
+            onUpdatePath(selectedPathId, {
+              imageWidth: newW,
+              imageHeight: newH,
+              x: (selectedPath.x || 0) + transX,
+              y: (selectedPath.y || 0) + transY,
+            });
+          } else {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            selectedPath.anchors.forEach(a => {
+              const pts = [a.point];
+              if (a.handleIn) pts.push(a.handleIn);
+              if (a.handleOut) pts.push(a.handleOut);
+              pts.forEach(p => {
+                if (p.x < minX) minX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y > maxY) maxY = p.y;
+              });
+            });
+
+            if (minX !== Infinity) {
+              const oldW = maxX - minX;
+              const oldH = maxY - minY;
+              
+              let newMinX = minX;
+              let newMinY = minY;
+              let newMaxX = maxX;
+              let newMaxY = maxY;
+
+              // Handle index maps to bounding box corners:
+              // 0: TL, 1: TC, 2: TR
+              // 3: ML,       4: MR
+              // 5: BL, 6: BC, 7: BR
+              const h = dragTarget.handle;
+              if (h === 0 || h === 3 || h === 5) newMinX += dx;
+              if (h === 2 || h === 4 || h === 7) newMaxX += dx;
+              if (h === 0 || h === 1 || h === 2) newMinY += dy;
+              if (h === 5 || h === 6 || h === 7) newMaxY += dy;
+
+              // Prevent negative width/height inversion for simplicity
+              if (newMaxX - newMinX < 1) newMaxX = newMinX + 1;
+              if (newMaxY - newMinY < 1) newMaxY = newMinY + 1;
+
+              const newW = newMaxX - newMinX;
+              const newH = newMaxY - newMinY;
+
+              const scaleX = newW / oldW;
+              const scaleY = newH / oldH;
+
+              const updated = selectedPath.anchors.map(anchor => {
+                const scalePoint = (p: Point) => ({
+                  x: newMinX + (p.x - minX) * scaleX,
+                  y: newMinY + (p.y - minY) * scaleY
+                });
+                return {
+                  ...anchor,
+                  point: scalePoint(anchor.point),
+                  handleIn: anchor.handleIn ? scalePoint(anchor.handleIn) : null,
+                  handleOut: anchor.handleOut ? scalePoint(anchor.handleOut) : null
+                };
+              });
+
+              onUpdatePath(selectedPathId, { anchors: updated });
+            }
+          }
           setDragStartPoint(posNoSnap);
         }
         return;
@@ -551,6 +824,46 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       setDragStartPoint(null);
       onCommitHistory?.();
       committed = true;
+    }
+
+    if (marqueeStart && marqueeEnd) {
+      // Find paths within marquee
+      const minX = Math.min(marqueeStart.x, marqueeEnd.x);
+      const maxX = Math.max(marqueeStart.x, marqueeEnd.x);
+      const minY = Math.min(marqueeStart.y, marqueeEnd.y);
+      const maxY = Math.max(marqueeStart.y, marqueeEnd.y);
+
+      const pathsInMarquee = paths.filter(p => {
+        if (!p.enabled) return false;
+        // Simple bounding box check for now
+        let px = minX, py = minY, pw = 0, ph = 0;
+        if (p.type === 'image') {
+          px = p.x || 0;
+          py = p.y || 0;
+          pw = p.imageWidth || 0;
+          ph = p.imageHeight || 0;
+        } else if (p.anchors && p.anchors.length > 0) {
+          const xs = p.anchors.map(a => a.point.x);
+          const ys = p.anchors.map(a => a.point.y);
+          px = Math.min(...xs);
+          py = Math.min(...ys);
+          pw = Math.max(...xs) - px;
+          ph = Math.max(...ys) - py;
+        }
+        
+        return px >= minX && (px + pw) <= maxX && py >= minY && (py + ph) <= maxY;
+      });
+
+      // Select first path if only one found, multi-select not supported yet
+      if (pathsInMarquee.length === 1) {
+        onSelectPath(pathsInMarquee[0].id);
+      } else if (pathsInMarquee.length > 0) {
+        onSelectPath(pathsInMarquee[0].id);
+      }
+
+      setMarqueeStart(null);
+      setMarqueeEnd(null);
+      return;
     }
 
     if (isDraggingPenHandle) {
@@ -667,6 +980,77 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         setRawPencilPoints([]);
         setActiveTool('direct-select');
       }
+      return;
+    }
+
+    // Complete Rect/Ellipse stroke
+    if (isDrawing && (activeTool === 'rect' || activeTool === 'ellipse')) {
+      setIsDrawing(false);
+      if (rawPencilPoints.length === 2) {
+        const [start, end] = rawPencilPoints;
+        const minX = Math.min(start.x, end.x);
+        const minY = Math.min(start.y, end.y);
+        const maxX = Math.max(start.x, end.x);
+        const maxY = Math.max(start.y, end.y);
+        const width = maxX - minX;
+        const height = maxY - minY;
+
+        if (width > 1 || height > 1) {
+          const newPathId = `shape-${Date.now()}`;
+          let anchors: AnchorPoint[] = [];
+
+          if (activeTool === 'rect') {
+            anchors = [
+              { id: uid('anchor'), point: { x: minX, y: minY }, isCorner: true },
+              { id: uid('anchor'), point: { x: maxX, y: minY }, isCorner: true },
+              { id: uid('anchor'), point: { x: maxX, y: maxY }, isCorner: true },
+              { id: uid('anchor'), point: { x: minX, y: maxY }, isCorner: true }
+            ];
+          } else if (activeTool === 'ellipse') {
+            const cx = minX + width / 2;
+            const cy = minY + height / 2;
+            const rx = width / 2;
+            const ry = height / 2;
+            const kappa = 0.5522848; // Circle to bezier magic number
+            const ox = rx * kappa;
+            const oy = ry * kappa;
+
+            anchors = [
+              { id: uid('anchor'), point: { x: cx, y: minY }, handleIn: { x: cx - ox, y: minY }, handleOut: { x: cx + ox, y: minY }, isCorner: false },
+              { id: uid('anchor'), point: { x: maxX, y: cy }, handleIn: { x: maxX, y: cy - oy }, handleOut: { x: maxX, y: cy + oy }, isCorner: false },
+              { id: uid('anchor'), point: { x: cx, y: maxY }, handleIn: { x: cx + ox, y: maxY }, handleOut: { x: cx - ox, y: maxY }, isCorner: false },
+              { id: uid('anchor'), point: { x: minX, y: cy }, handleIn: { x: minX, y: cy + oy }, handleOut: { x: minX, y: cy - oy }, isCorner: false }
+            ];
+          }
+
+          const newPath: DrawingPath = {
+            id: newPathId,
+            name: `${activeTool === 'rect' ? 'Rectangle' : 'Ellipse'} ${paths.length + 1}`,
+            anchors,
+            closed: true,
+            pathType: activeTool,
+            strokeWidth: 4,
+            color: '#00F2FF',
+            gradientId: 'cyberpunk',
+            dashPreset: 'solid',
+            customDashLength: 0,
+            customGapLength: 0,
+            flowSpeed: 0,
+            flowDirection: 'forward',
+            showGlow: false,
+            opacity: 1,
+            fill: '#ffffff',
+            fillOpacity: 0.1,
+            enabled: true
+          };
+
+          onAddPath(newPath);
+          onSelectPath(newPathId);
+        }
+        setRawPencilPoints([]);
+        setActiveTool('direct-select');
+      }
+      return;
     }
   };
 
@@ -754,6 +1138,32 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           title="Straight Line (L)"
         >
           <Minus className="w-4 h-4" />
+        </button>
+
+        {/* Rect Tool (R) */}
+        <button
+          onClick={() => setActiveTool('rect')}
+          className={`p-2 rounded-[24px] transition-all ${
+            activeTool === 'rect'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
+          }`}
+          title="Rectangle Tool (R)"
+        >
+          <div className="w-4 h-4 border-[1.5px] border-current rounded-[2px]" />
+        </button>
+
+        {/* Ellipse Tool (O) */}
+        <button
+          onClick={() => setActiveTool('ellipse')}
+          className={`p-2 rounded-[24px] transition-all ${
+            activeTool === 'ellipse'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
+          }`}
+          title="Ellipse Tool (O)"
+        >
+          <div className="w-4 h-4 border-[1.5px] border-current rounded-full" />
         </button>
 
         {/* Connector Tool (C) */}
@@ -887,6 +1297,75 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+
+          {/* Per-path SVG markers for endpoint caps */}
+          {paths.filter(p => p.enabled && (p.startCap || p.endCap)).map(path => {
+            const sw = path.strokeWidth || 2;
+            const mId = path.id.replace(/[^a-zA-Z0-9]/g, '_');
+            const markers: React.ReactNode[] = [];
+
+            const buildMarker = (cap: CapType, isStart: boolean) => {
+              const side = isStart ? 'start' : 'end';
+              const id = `marker-${mId}-${side}`;
+              const size = Math.max(6, sw * 3.5);
+              const half = size / 2;
+
+              if (cap === 'none') return null;
+              if (cap === 'arrow') {
+                return (
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <polyline points={isStart ? `${size},0 0,${half} ${size},${size}` : `0,0 ${size},${half} 0,${size}`} fill="none" stroke={path.color} strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round" />
+                  </marker>
+                );
+              }
+              if (cap === 'solidArrow') {
+                return (
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <polygon points={isStart ? `${size},0 0,${half} ${size},${size}` : `0,0 ${size},${half} 0,${size}`} fill={path.color} />
+                  </marker>
+                );
+              }
+              if (cap === 'circle') {
+                return (
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={half} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <circle cx={half} cy={half} r={half - 0.5} fill={path.color} />
+                  </marker>
+                );
+              }
+              if (cap === 'diamond') {
+                return (
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <polygon points={`${half},0 ${size},${half} ${half},${size} 0,${half}`} fill={path.color} />
+                  </marker>
+                );
+              }
+              if (cap === 'square') {
+                return (
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <rect x={0} y={0} width={size} height={size} fill={path.color} />
+                  </marker>
+                );
+              }
+              if (cap === 'bar') {
+                return (
+                  <marker key={id} id={id} markerWidth={sw * 2} markerHeight={size} refX={sw} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <line x1={sw} y1={0} x2={sw} y2={size} stroke={path.color} strokeWidth={sw} strokeLinecap="round" />
+                  </marker>
+                );
+              }
+              return null;
+            };
+
+            if (path.startCap && path.startCap !== 'none') {
+              const m = buildMarker(path.startCap, true);
+              if (m) markers.push(m);
+            }
+            if (path.endCap && path.endCap !== 'none') {
+              const m = buildMarker(path.endCap, false);
+              if (m) markers.push(m);
+            }
+            return <React.Fragment key={path.id}>{markers}</React.Fragment>;
+          })}
         </defs>
 
         {/* Background Grid */}
@@ -901,7 +1380,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           </g>
         )}
 
-        <g transform={`translate(${pan.x}, ${pan.y})`}>
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${settings.zoom || 1})`}>
           {/* Render Saved Vector Paths */}
           {paths.map(path => {
             if (!path.enabled) return null;
@@ -930,13 +1409,49 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                     opacity={path.opacity ?? 1}
                   />
                   {isSelected && (
-                    <rect 
-                      width={path.imageWidth || 100} 
-                      height={path.imageHeight || 100} 
-                      fill="none" 
-                      stroke="#00F2FF" 
-                      strokeWidth={1 / zoom} 
-                    />
+                    <>
+                      <rect 
+                        width={path.imageWidth || 100} 
+                        height={path.imageHeight || 100} 
+                        fill="none" 
+                        stroke="#00F2FF" 
+                        strokeWidth={1.5} 
+                      />
+                      {activeTool === 'select' && (() => {
+                        const minX = 0;
+                        const minY = 0;
+                        const maxX = path.imageWidth || 100;
+                        const maxY = path.imageHeight || 100;
+                        const w = maxX - minX;
+                        const h = maxY - minY;
+                        return (
+                          <g className="bounding-box">
+                            {[
+                              [minX, minY], [minX + w / 2, minY], [maxX, minY],
+                              [minX, minY + h / 2], [maxX, minY + h / 2],
+                              [minX, maxY], [minX + w / 2, maxY], [maxX, maxY]
+                            ].map(([hx, hy], i) => (
+                              <rect
+                                key={`img-handle-${i}`}
+                                x={hx - 3}
+                                y={hy - 3}
+                                width={6}
+                                height={6}
+                                fill="#FFFFFF"
+                                stroke="#00F2FF"
+                                strokeWidth={1.5}
+                                className="cursor-pointer"
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  setDragTarget({ type: 'resize', handle: i });
+                                  setDragStartPoint(getCanvasCoords(e, false));
+                                }}
+                              />
+                            ))}
+                          </g>
+                        );
+                      })()}
+                    </>
                   )}
                 </g>
               );
@@ -963,6 +1478,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                   }
                 }}
                 className="cursor-pointer"
+                transform={path.x || path.y ? `translate(${path.x || 0}, ${path.y || 0})` : undefined}
               >
               {/* Glow bloom layer */}
               {path.showGlow && (
@@ -980,11 +1496,12 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 />
               )}
 
-              {/* Main vector stroke */}
+              {/* Main vector stroke with endpoint caps */}
               <path
                 id={`${path.id}-stroke`}
                 d={d}
-                fill="none"
+                fill={path.fill || 'none'}
+                fillOpacity={path.fillOpacity ?? 1}
                 stroke={strokePaint}
                 strokeWidth={path.strokeWidth}
                 strokeLinecap={path.lineCap || 'round'}
@@ -992,7 +1509,21 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 strokeDasharray={dashArray}
                 strokeDashoffset={offset}
                 opacity={path.opacity}
+                markerStart={path.startCap && path.startCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-start)` : undefined}
+                markerEnd={path.endCap && path.endCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-end)` : undefined}
               />
+
+              {/* Arrow Flow — animated chevrons flowing along the path */}
+              {path.arrowFlow && isPlaying && (
+                <ArrowFlowOverlay
+                  pathId={`${path.id}-stroke`}
+                  color={path.color}
+                  arrowSize={path.arrowFlowSize || 14}
+                  spacing={path.arrowFlowSpacing || 70}
+                  speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
+                  reverse={path.flowDirection === 'reverse'}
+                />
+              )}
 
               {/* Label */}
               {path.label && (
@@ -1006,19 +1537,88 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                   </textPath>
                 </text>
               )}
+              {/* Object Along Path */}
+              {path.motionObjectId && isPlaying && (() => {
+                const motObj = paths.find(p => p.id === path.motionObjectId && p.enabled);
+                if (!motObj) return null;
+                return (
+                  <MotionObjectOverlay
+                    pathId={`${path.id}-stroke`}
+                    motionPath={motObj}
+                    speed={(path.motionSpeed || 1) * (settings.globalSpeed || 1)}
+                  />
+                );
+              })()}
 
               {/* Selection Halo */}
               {isSelected && (
-                <path
-                  d={d}
-                  fill="none"
-                  stroke="var(--color-ink)"
-                  strokeWidth={1.5}
-                  strokeLinecap={path.lineCap || 'round'}
-                  strokeLinejoin={path.lineJoin || 'round'}
-                  strokeDasharray="4,4"
-                  opacity={0.7}
-                />
+                <>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="var(--color-ink)"
+                    strokeWidth={1.5}
+                    strokeLinecap={path.lineCap || 'round'}
+                    strokeLinejoin={path.lineJoin || 'round'}
+                    strokeDasharray="4,4"
+                    opacity={0.7}
+                  />
+                  {/* Bounding box for whole path selection */}
+                  {activeTool === 'select' && (() => {
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    path.anchors.forEach(a => {
+                      const pts = [a.point];
+                      if (a.handleIn) pts.push(a.handleIn);
+                      if (a.handleOut) pts.push(a.handleOut);
+                      pts.forEach(p => {
+                        if (p.x < minX) minX = p.x;
+                        if (p.y < minY) minY = p.y;
+                        if (p.x > maxX) maxX = p.x;
+                        if (p.y > maxY) maxY = p.y;
+                      });
+                    });
+                    if (minX === Infinity) return null;
+                    const w = maxX - minX;
+                    const h = maxY - minY;
+                    const pad = 2; // Padding around bounds
+                    return (
+                      <g className="bounding-box">
+                        <rect
+                          x={minX - pad}
+                          y={minY - pad}
+                          width={w + pad * 2}
+                          height={h + pad * 2}
+                          fill="none"
+                          stroke="#00F2FF"
+                          strokeWidth={1}
+                        />
+                        {/* 8 resize handles */}
+                        {[
+                          [minX - pad, minY - pad], [minX + w / 2, minY - pad], [maxX + pad, minY - pad],
+                          [minX - pad, minY + h / 2], [maxX + pad, minY + h / 2],
+                          [minX - pad, maxY + pad], [minX + w / 2, maxY + pad], [maxX + pad, maxY + pad]
+                        ].map(([hx, hy], i) => (
+                          <rect
+                            key={`bb-handle-${i}`}
+                            x={hx - 3}
+                            y={hy - 3}
+                            width={6}
+                            height={6}
+                            fill="#FFFFFF"
+                            stroke="#00F2FF"
+                            strokeWidth={1.5}
+                            className="cursor-pointer"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              setDragTarget({ type: 'resize', handle: i });
+                              setDragStartPoint(getCanvasCoords(e, false));
+                            }}
+                          />
+                        ))}
+                      </g>
+                    );
+                  })()}
+                </>
               )}
             </g>
           );
@@ -1026,7 +1626,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
         {/* Illustrator-Style Interactive Anchor Points & Tangent Handles */}
         {selectedPath && selectedPath.enabled && (
-          <g className="illustrator-handles pointer-events-auto">
+          <g className="illustrator-handles pointer-events-auto" transform={selectedPath.x || selectedPath.y ? `translate(${selectedPath.x || 0}, ${selectedPath.y || 0})` : undefined}>
             {selectedPath.anchors.map((anchor, idx) => {
               const isAnchorSelected = selectedAnchorIndex === idx;
 
@@ -1178,6 +1778,50 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
               strokeLinejoin="round"
               strokeDasharray="8,4"
               className="animate-pulse"
+            />
+          )}
+          
+          {/* Live Shape Preview */}
+          {isDrawing && (activeTool === 'rect' || activeTool === 'ellipse') && rawPencilPoints.length === 2 && (
+            <path
+              d={(() => {
+                const [start, end] = rawPencilPoints;
+                const minX = Math.min(start.x, end.x);
+                const minY = Math.min(start.y, end.y);
+                const maxX = Math.max(start.x, end.x);
+                const maxY = Math.max(start.y, end.y);
+                const width = maxX - minX;
+                const height = maxY - minY;
+                if (activeTool === 'rect') {
+                  return `M ${minX} ${minY} L ${maxX} ${minY} L ${maxX} ${maxY} L ${minX} ${maxY} Z`;
+                } else {
+                  const cx = minX + width / 2;
+                  const cy = minY + height / 2;
+                  const rx = width / 2;
+                  const ry = height / 2;
+                  return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy}`;
+                }
+              })()}
+              fill="rgba(0, 242, 255, 0.1)"
+              stroke="var(--color-ink)"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="4,4"
+              className="animate-pulse"
+            />
+          )}
+          
+          {/* Marquee Selection */}
+          {marqueeStart && marqueeEnd && (
+            <rect
+              x={Math.min(marqueeStart.x, marqueeEnd.x)}
+              y={Math.min(marqueeStart.y, marqueeEnd.y)}
+              width={Math.abs(marqueeEnd.x - marqueeStart.x)}
+              height={Math.abs(marqueeEnd.y - marqueeStart.y)}
+              fill="rgba(0, 242, 255, 0.1)"
+              stroke="#00F2FF"
+              strokeWidth={1}
             />
           )}
         </g>

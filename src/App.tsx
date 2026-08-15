@@ -349,8 +349,12 @@ export default function App() {
     canvas.height = height * scale;
 
     const offsets: Record<string, number> = {};
-    paths.forEach(p => { offsets[p.id] = 0; });
-    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale);
+    const motionProgress: Record<string, number> = {};
+    paths.forEach(p => { 
+        offsets[p.id] = 0; 
+        motionProgress[p.id] = 0; // At export PNG, just start of motion
+    });
+    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale, motionProgress);
 
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
@@ -401,12 +405,15 @@ export default function App() {
     targetPaths: DrawingPath[], 
     transparent: boolean, 
     filename: string,
-    scale: number = 1
+    scale: number = 1,
+    fps: number = 15,
+    durationInSeconds: number = 2
   ): Promise<void> => {
     const bbox = calculateBoundingBox(targetPaths);
     const width = Math.max(bbox.width, 100);
     const height = Math.max(bbox.height, 100);
-    const frameCount = 18;
+    const frameCount = Math.floor(fps * durationInSeconds);
+    const frameDelayMs = Math.floor(1000 / fps);
     const frames: HTMLCanvasElement[] = [];
 
     for (let f = 0; f < frameCount; f++) {
@@ -415,15 +422,33 @@ export default function App() {
       canvas.height = height * scale;
 
       const offsets: Record<string, number> = {};
+      const motionProgress: Record<string, number> = {};
+      const timeElapsed = f * (frameDelayMs / 1000); // converting frame index to elapsed seconds
+      
       targetPaths.forEach(p => {
-        const cycleDist = (p.customDashLength || 20) + (p.customGapLength || 10) + ((p.customDash2 || 0) + (p.customGap2 || 0));
-        const actualCycle = cycleDist > 0 ? cycleDist : 40;
-        const speed = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1);
+        // Continuous dash flow velocity: 45 px/sec per unit speed (matches ArtboardCanvas animation loop)
+        const flowVelocity = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
         const dir = p.flowDirection === 'reverse' ? 1 : -1;
-        offsets[p.id] = f * (actualCycle / frameCount) * speed * dir;
+        offsets[p.id] = timeElapsed * flowVelocity * dir;
+
+        const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
+        const duration = Math.max(0.5, 20 / motionSpeed);
+        motionProgress[p.id] = (timeElapsed % duration) / duration;
       });
 
-      renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent, { x: -bbox.x, y: -bbox.y }, scale);
+      renderArtboardToCanvas(
+        canvas, 
+        targetPaths, 
+        offsets, 
+        settings.backgroundColor, 
+        false, 
+        transparent, 
+        { x: -bbox.x, y: -bbox.y }, 
+        scale, 
+        motionProgress,
+        timeElapsed,
+        settings.globalSpeed || 1
+      );
       frames.push(canvas);
     }
 
@@ -433,7 +458,7 @@ export default function App() {
         height: height * scale,
         frames: frames.map(canvas => ({
           data: canvas,
-          delay: 70, // ~14 fps
+          delay: frameDelayMs,
           transparent
         }))
       });
@@ -455,6 +480,8 @@ export default function App() {
     exportSeparateLayers: boolean; 
     singleLayerId?: string;
     scale: number;
+    fps: number;
+    duration: number;
   }) => {
     setIsExportingGIF(true);
 
@@ -468,7 +495,7 @@ export default function App() {
           const layer = enabledPaths[i];
           setGifProgressText(`Rendering Layer ${i + 1} of ${enabledPaths.length}: "${layer.name}"...`);
           const safeName = layer.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`, scale);
+          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`, scale, options.fps, options.duration);
           // Slight delay between downloads
           await new Promise(r => setTimeout(r, 400));
         }
@@ -478,12 +505,12 @@ export default function App() {
         if (target) {
           setGifProgressText(`Rendering "${target.name}" GIF...`);
           const safeName = target.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`, scale);
+          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`, scale, options.fps, options.duration);
         }
       } else {
         // Export full composition
         setGifProgressText(`Rendering Animated Composition (${options.transparent ? 'Transparent' : 'Solid'})...`);
-        await generateGifForPaths(enabledPaths, options.transparent, 'vector-flow-artboard.gif', scale);
+        await generateGifForPaths(paths, options.transparent, 'vector-flow-artboard.gif', scale, options.fps, options.duration);
       }
     } catch (err) {
       console.error('GIF generation error:', err);

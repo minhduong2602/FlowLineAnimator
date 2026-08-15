@@ -394,9 +394,182 @@ export function drawPathToCanvas(
   } else {
     ctx.setLineDash([]);
   }
+
+  if (path.fill) {
+    ctx.save();
+    ctx.fillStyle = path.fill;
+    if (path.fillOpacity !== undefined) {
+      ctx.globalAlpha = path.fillOpacity;
+    }
+    ctx.fill(p2d);
+    ctx.restore();
+  }
+
   ctx.stroke(p2d);
-  
+
+  // Draw start and end caps
+  if (path.startCap && path.startCap !== 'none' || path.endCap && path.endCap !== 'none') {
+    const drawMarker = (cap: string, point: Point, angle: number, isStart: boolean) => {
+      ctx.save();
+      ctx.translate(point.x, point.y);
+      ctx.rotate(angle);
+      
+      const sw = path.strokeWidth || 2;
+      const size = Math.max(6, sw * 3.5);
+      const half = size / 2;
+      
+      // Orient the marker similar to SVG orient="auto"
+      // SVG markers have refX and refY. 
+      // We will translate so the ref point is at (0,0)
+      let refX = isStart ? 0 : size;
+      const refY = half;
+      
+      if (cap === 'circle') {
+          refX = half;
+      } else if (cap === 'bar') {
+          refX = sw;
+      } else if (cap === 'diamond') {
+          refX = isStart ? 0 : size;
+      }
+      
+      ctx.translate(-refX, -refY);
+      
+      ctx.fillStyle = strokeStyle;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = sw;
+      ctx.setLineDash([]);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      ctx.beginPath();
+      if (cap === 'arrow') {
+        if (isStart) {
+            ctx.moveTo(size, 0); ctx.lineTo(0, half); ctx.lineTo(size, size);
+        } else {
+            ctx.moveTo(0, 0); ctx.lineTo(size, half); ctx.lineTo(0, size);
+        }
+        ctx.stroke();
+      } else if (cap === 'solidArrow') {
+        if (isStart) {
+            ctx.moveTo(size, 0); ctx.lineTo(0, half); ctx.lineTo(size, size);
+        } else {
+            ctx.moveTo(0, 0); ctx.lineTo(size, half); ctx.lineTo(0, size);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else if (cap === 'circle') {
+        ctx.arc(half, half, half - 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (cap === 'diamond') {
+        if (isStart) {
+            ctx.moveTo(half, 0); ctx.lineTo(size, half); ctx.lineTo(half, size); ctx.lineTo(0, half);
+        } else {
+            ctx.moveTo(half, 0); ctx.lineTo(size, half); ctx.lineTo(half, size); ctx.lineTo(0, half);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else if (cap === 'square') {
+        ctx.rect(0, 0, size, size);
+        ctx.fill();
+      } else if (cap === 'bar') {
+        ctx.moveTo(sw, 0); ctx.lineTo(sw, size);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const getAngle = (p1: Point, p2: Point) => Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+    if (path.startCap && path.startCap !== 'none') {
+        const p1 = path.anchors[0];
+        let p2 = p1.handleOut;
+        if (!p2 && path.anchors.length > 1) {
+             const next = path.anchors[1];
+             if (path.routing === 'elbow' || path.routing === 'smooth') {
+                 const midX = p1.point.x + (next.point.x - p1.point.x) / 2;
+                 if (midX !== p1.point.x) {
+                     p2 = { x: midX, y: p1.point.y };
+                 } else {
+                     p2 = { x: p1.point.x, y: next.point.y }; // vertical
+                 }
+             } else {
+                 p2 = next.handleIn || next.point;
+             }
+        }
+        if (p2) {
+            // angle from p1 to p2 because it's the start (forward direction)
+            const angle = getAngle(p1.point, p2);
+            drawMarker(path.startCap, p1.point, angle, true);
+        }
+    }
+
+    if (path.endCap && path.endCap !== 'none' && !path.closed) {
+        const p1 = path.anchors[path.anchors.length - 1];
+        let p2 = p1.handleIn;
+        if (!p2 && path.anchors.length > 1) {
+             const prev = path.anchors[path.anchors.length - 2];
+             if (path.routing === 'elbow' || path.routing === 'smooth') {
+                 const midX = prev.point.x + (p1.point.x - prev.point.x) / 2;
+                 if (midX !== p1.point.x) {
+                     p2 = { x: midX, y: p1.point.y };
+                 } else {
+                     p2 = { x: p1.point.x, y: prev.point.y }; // vertical
+                 }
+             } else {
+                 p2 = prev.handleOut || prev.point;
+             }
+        }
+        if (p2) {
+            // angle from p2 to p1 because it's the end (forward direction)
+            const angle = getAngle(p2, p1.point);
+            drawMarker(path.endCap, p1.point, angle, false);
+        }
+    }
+  }
+
   ctx.restore();
+}
+
+export function getBoundingBox(path: DrawingPath) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  
+  if (path.type === 'image') {
+    return {
+      x: path.x || 0,
+      y: path.y || 0,
+      width: path.imageWidth || 0,
+      height: path.imageHeight || 0
+    };
+  }
+
+  let hasPoints = false;
+  path.anchors.forEach(a => {
+    hasPoints = true;
+    const pts = [a.point];
+    if (a.handleIn) pts.push(a.handleIn);
+    if (a.handleOut) pts.push(a.handleOut);
+    
+    pts.forEach(p => {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    });
+  });
+
+  if (!hasPoints) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
 }
 
 export function calculateBoundingBox(paths: DrawingPath[]) {
@@ -410,19 +583,13 @@ export function calculateBoundingBox(paths: DrawingPath[]) {
 
   paths.forEach(path => {
     if (!path.enabled) return;
-    path.anchors.forEach(a => {
-      hasPoints = true;
-      const pts = [a.point];
-      if (a.handleIn) pts.push(a.handleIn);
-      if (a.handleOut) pts.push(a.handleOut);
-      
-      pts.forEach(p => {
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      });
-    });
+    hasPoints = true;
+    const box = getBoundingBox(path);
+    if (box.x < minX) minX = box.x;
+    if (box.y < minY) minY = box.y;
+    if (box.x + box.width > maxX) maxX = box.x + box.width;
+    if (box.y + box.height > maxY) maxY = box.y + box.height;
+    
     if (path.strokeWidth > maxStroke) maxStroke = path.strokeWidth;
   });
 
@@ -452,7 +619,10 @@ export function renderArtboardToCanvas(
   showGrid = true,
   transparent = false,
   offset = { x: 0, y: 0 },
-  scale = 1
+  scale = 1,
+  motionProgress: Record<string, number> = {},
+  timeElapsed: number = 0,
+  globalSpeed: number = 1
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -494,11 +664,164 @@ export function renderArtboardToCanvas(
     }
   }
 
-  // Paths
+  // Paths and Images
   paths.forEach(path => {
     if (path.enabled) {
-      const lineOffset = dashOffsets[path.id] || 0;
-      drawPathToCanvas(ctx, path, lineOffset, w / scale, h / scale);
+      if (path.type === 'image' && path.imageUrl) {
+        ctx.save();
+        ctx.translate(path.x || 0, path.y || 0);
+        if (path.opacity !== undefined) {
+          ctx.globalAlpha = path.opacity;
+        }
+        
+        try {
+          const img = new Image();
+          img.src = path.imageUrl;
+          ctx.drawImage(img, 0, 0, path.imageWidth || 100, path.imageHeight || 100);
+        } catch (e) {
+          console.error('Failed to draw image', e);
+        }
+
+        ctx.restore();
+      } else {
+        const lineOffset = dashOffsets[path.id] || 0;
+        drawPathToCanvas(ctx, path, lineOffset, w / scale, h / scale);
+
+        // Helper to get or construct SVG Path Element for sampling curve positions & tangents
+        const getSvgPathNode = (): SVGPathElement | null => {
+          let node = document.getElementById(`${path.id}-stroke`) as SVGPathElement | null;
+          if (!node && path.anchors && path.anchors.length > 0) {
+            const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
+            const temp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            temp.setAttribute('d', d);
+            node = temp;
+          }
+          return node;
+        };
+
+        // ── Render Animated Chevrons (Arrow Flow) ──
+        if (path.arrowFlow) {
+          const svgPathNode = getSvgPathNode();
+          if (svgPathNode) {
+            try {
+              const totalLength = svgPathNode.getTotalLength();
+              if (totalLength > 0) {
+                const arrowCount = 8;
+                const speed = (path.flowSpeed || 1.5) * globalSpeed;
+                const duration = Math.max(0.3, 20 / speed);
+                const baseProgress = (timeElapsed % duration) / duration;
+                const arrowSize = path.arrowFlowSize || 14;
+                const half = arrowSize / 2;
+
+                for (let i = 0; i < arrowCount; i++) {
+                  let progress = ((baseProgress + (i / arrowCount)) % 1);
+                  if (path.flowDirection === 'reverse') {
+                    progress = (1 - progress + 1) % 1;
+                  }
+
+                  const currentDist = progress * totalLength;
+                  const pt = svgPathNode.getPointAtLength(currentDist);
+
+                  const sampleDist = 1;
+                  let ptNext = null;
+                  let ptPrev = null;
+                  if (currentDist + sampleDist <= totalLength) {
+                    ptNext = svgPathNode.getPointAtLength(currentDist + sampleDist);
+                    ptPrev = pt;
+                  } else {
+                    ptPrev = svgPathNode.getPointAtLength(Math.max(0, currentDist - sampleDist));
+                    ptNext = pt;
+                  }
+
+                  let angle = 0;
+                  if (ptNext && ptPrev) {
+                    angle = Math.atan2(ptNext.y - ptPrev.y, ptNext.x - ptPrev.x);
+                  }
+                  if (path.flowDirection === 'reverse') {
+                    angle += Math.PI;
+                  }
+
+                  ctx.save();
+                  ctx.translate((path.x || 0) + pt.x, (path.y || 0) + pt.y);
+                  ctx.rotate(angle);
+
+                  ctx.beginPath();
+                  ctx.moveTo(-half, -half * 0.8);
+                  ctx.lineTo(half, 0);
+                  ctx.lineTo(-half, half * 0.8);
+
+                  ctx.strokeStyle = path.color;
+                  ctx.lineWidth = Math.max(1, arrowSize * 0.18);
+                  ctx.lineCap = 'round';
+                  ctx.lineJoin = 'round';
+                  ctx.globalAlpha = (path.opacity ?? 1) * 0.85;
+                  ctx.stroke();
+
+                  ctx.restore();
+                }
+              }
+            } catch (err) {
+              console.error('Error drawing arrow flow on canvas:', err);
+            }
+          }
+        }
+
+        // ── Render Motion Object Along Path ──
+        if (path.motionObjectId) {
+          const motionObj = paths.find(p => p.id === path.motionObjectId);
+          const svgPathNode = getSvgPathNode();
+          
+          if (motionObj && svgPathNode) {
+            try {
+              const totalLength = svgPathNode.getTotalLength();
+              const progress = motionProgress[path.id] || 0;
+              const currentDist = progress * totalLength;
+              const pt = svgPathNode.getPointAtLength(currentDist);
+              
+              const sampleDist = 1;
+              let ptNext = null;
+              let ptPrev = null;
+              if (currentDist + sampleDist <= totalLength) {
+                ptNext = svgPathNode.getPointAtLength(currentDist + sampleDist);
+                ptPrev = pt;
+              } else {
+                ptPrev = svgPathNode.getPointAtLength(Math.max(0, currentDist - sampleDist));
+                ptNext = pt;
+              }
+
+              let angle = 0;
+              if (ptNext && ptPrev) {
+                angle = Math.atan2(ptNext.y - ptPrev.y, ptNext.x - ptPrev.x);
+              }
+
+              ctx.save();
+              ctx.translate((path.x || 0) + pt.x, (path.y || 0) + pt.y);
+              ctx.rotate(angle);
+
+              if (motionObj.type === 'image' && motionObj.imageUrl) {
+                const img = new Image();
+                img.src = motionObj.imageUrl;
+                const mw = motionObj.imageWidth || 40;
+                const mh = motionObj.imageHeight || 40;
+                if (motionObj.opacity !== undefined) {
+                  ctx.globalAlpha = motionObj.opacity;
+                }
+                ctx.drawImage(img, -mw / 2, -mh / 2, mw, mh);
+              } else {
+                ctx.fillStyle = motionObj.color;
+                if (motionObj.opacity !== undefined) ctx.globalAlpha = motionObj.opacity;
+                ctx.beginPath();
+                ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                ctx.fill();
+              }
+
+              ctx.restore();
+            } catch (err) {
+              console.error('Error drawing motion object on canvas:', err);
+            }
+          }
+        }
+      }
     }
   });
 

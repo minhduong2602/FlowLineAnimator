@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { DrawingPath, ArtboardSettings } from '../types';
-import { GRADIENT_PRESETS, DASH_PRESETS } from '../data/presets';
-import { 
-  Sliders, Layers, Sparkles, Trash2, Eye, EyeOff, Plus, Check, Settings, 
-  Compass, CornerUpRight, Sparkle, Gauge, Palette, RotateCw, GitMerge, 
-  ChevronDown, ChevronRight 
+import { DrawingPath, ArtboardSettings, CapType } from '../types';
+import { CAP_PRESETS } from '../data/presets';
+import {
+  Sliders, Layers, Trash2, Eye, EyeOff,
+  Compass, CornerUpRight, Sparkle,
+  ChevronDown, ChevronRight, ArrowLeftRight
 } from 'lucide-react';
 
-function useLocalStorageState(key, defaultValue) {
-  const [state, setState] = useState(() => {
+function useLocalStorageState<T>(key: string, defaultValue: T): [T, (val: T) => void] {
+  const [state, setState] = useState<T>(() => {
     try {
       const stored = localStorage.getItem(key);
       if (stored !== null) return JSON.parse(stored);
@@ -18,7 +18,7 @@ function useLocalStorageState(key, defaultValue) {
     return defaultValue;
   });
 
-  const setValue = (val) => {
+  const setValue = (val: T) => {
     setState(val);
     try {
       localStorage.setItem(key, JSON.stringify(val));
@@ -32,469 +32,633 @@ function useLocalStorageState(key, defaultValue) {
 
 const CollapsibleSection: React.FC<{
   title: React.ReactNode;
-  subtitle?: React.ReactNode;
   id: string;
   defaultExpanded?: boolean;
   children: React.ReactNode;
   className?: string;
-}> = ({ title, subtitle, id, defaultExpanded = true, children, className = '' }) => {
+  headerRight?: React.ReactNode;
+}> = ({ title, id, defaultExpanded = true, children, className = '', headerRight }) => {
   const [isExpanded, setIsExpanded] = useLocalStorageState(`section-expanded-${id}`, defaultExpanded);
 
   return (
-    <div className={`bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] overflow-hidden ${className}`}>
-      <div 
-        className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-[var(--color-surface-alt)] transition-colors border-b border-transparent"
-        style={{ borderBottomColor: isExpanded ? 'var(--color-hairline)' : 'transparent' }}
+    <div className={`border-b border-[var(--color-hairline)] last:border-b-0 py-2 px-3 ${className}`}>
+      <div
+        className="flex items-center justify-between cursor-pointer select-none py-1 group"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center gap-2">
-           {isExpanded ? <ChevronDown className="w-4 h-4 text-[var(--color-mid-gray)]" /> : <ChevronRight className="w-4 h-4 text-[var(--color-mid-gray)]" />}
-           <div className="flex flex-col">
-             {typeof title === 'string' ? <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">{title}</span> : title}
-           </div>
+        <div className="flex items-center gap-1.5">
+          {isExpanded ? (
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--color-mid-gray)] group-hover:text-[var(--color-ink)] transition-colors" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5 text-[var(--color-mid-gray)] group-hover:text-[var(--color-ink)] transition-colors" />
+          )}
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
+            {title}
+          </span>
         </div>
-        {subtitle && <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">{subtitle}</span>}
+        {headerRight && <div onClick={e => e.stopPropagation()}>{headerRight}</div>}
       </div>
-      {isExpanded && (
-        <div className="p-3.5 space-y-3.5 pt-0">
-          {children}
-        </div>
-      )}
+      {isExpanded && <div className="mt-1.5 space-y-2">{children}</div>}
     </div>
   );
 };
 
-export const SidebarControls = ({
+export interface SidebarControlsProps {
+  paths: DrawingPath[];
+  selectedPathId: string | null;
+  onSelectPath: (id: string) => void;
+  onAddPath: (path: DrawingPath) => void;
+  onUpdatePath: (id: string, updates: Partial<DrawingPath>) => void;
+  onDeletePath: (id: string) => void;
+  settings: ArtboardSettings;
+  onUpdateSettings: (settings: Partial<ArtboardSettings>) => void;
+}
+
+export const SidebarControls: React.FC<SidebarControlsProps> = ({
   paths,
   selectedPathId,
   onSelectPath,
+  onAddPath,
   onUpdatePath,
   onDeletePath,
   settings,
   onUpdateSettings
 }) => {
-  const [activeTab, setActiveTab] = useState('paths');
+  const [activeTab, setActiveTab] = useState<'paths' | 'settings'>('paths');
   const selectedPath = paths.find(p => p.id === selectedPathId);
 
   return (
-    <aside className="w-80 h-full bg-[var(--color-canvas)] border-r border-[var(--color-hairline)] flex flex-col z-10 relative">
-      <div className="p-4 border-b border-[var(--color-hairline)] flex items-center justify-between bg-[var(--color-paper)]">
+    <aside className="w-72 h-full bg-[var(--color-canvas)] border-r border-[var(--color-hairline)] flex flex-col z-10 relative select-none">
+      {/* Top Brand / Header */}
+      <div className="px-3 py-2.5 border-b border-[var(--color-hairline)] flex items-center justify-between bg-[var(--color-paper)]">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-[var(--color-ink)] flex items-center justify-center">
-            <Compass className="w-3.5 h-3.5 text-[var(--color-canvas)]" />
+          <div className="w-5 h-5 rounded-md bg-[var(--color-ink)] flex items-center justify-center">
+            <Compass className="w-3 h-3 text-[var(--color-canvas)]" />
           </div>
-          <span className="font-bold text-[var(--color-ink)] tracking-tight">Artboard</span>
+          <span className="font-bold text-xs text-[var(--color-ink)] tracking-tight">FlowLine Studio</span>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex bg-[var(--color-surface-alt)] p-0.5 rounded-lg border border-[var(--color-hairline)]">
+          <button
+            onClick={() => setActiveTab('paths')}
+            className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
+              activeTab === 'paths'
+                ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] shadow-xs'
+                : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
+            }`}
+          >
+            Design
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
+              activeTab === 'settings'
+                ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] shadow-xs'
+                : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
+            }`}
+          >
+            Canvas
+          </button>
         </div>
       </div>
 
-      <div className="p-4 flex gap-2">
-        <button
-          onClick={() => setActiveTab('paths')}
-          className={`flex-1 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'paths' ? 'bg-[var(--color-ink)] text-[var(--color-canvas)]' : 'text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-          }`}
-        >
-          Layers
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`flex-1 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'settings' ? 'bg-[var(--color-ink)] text-[var(--color-canvas)]' : 'text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-          }`}
-        >
-          Settings
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar divide-y divide-[var(--color-hairline)]">
         {activeTab === 'paths' && (
-          <div className="p-4 space-y-4">
+          <>
+            {/* Layer Stack */}
+            <CollapsibleSection id="layer-list" title={`Layers (${paths.length})`}>
+              <div className="space-y-0.5 max-h-36 overflow-y-auto custom-scrollbar pr-0.5">
+                {[...paths].reverse().map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => onSelectPath(p.id)}
+                    className={`flex items-center justify-between px-2 py-1 rounded cursor-pointer border transition-colors ${
+                      selectedPathId === p.id
+                        ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
+                        : 'bg-[var(--color-surface-alt)]/50 text-[var(--color-mid-gray)] border-transparent hover:border-[var(--color-hairline)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      {p.type === 'image' ? (
+                        <Eye className="w-3 h-3 shrink-0" />
+                      ) : (
+                        <Layers className="w-3 h-3 shrink-0" />
+                      )}
+                      <span className="text-[11px] font-medium truncate">{p.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-70 hover:opacity-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdatePath(p.id, { enabled: !p.enabled });
+                        }}
+                        className="p-0.5 hover:bg-black/10 rounded"
+                        title={p.enabled ? "Hide Layer" : "Show Layer"}
+                      >
+                        {p.enabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {paths.length === 0 && (
+                  <div className="text-center py-3 text-[11px] text-[var(--color-mid-gray)]">No layers yet</div>
+                )}
+              </div>
+            </CollapsibleSection>
+
             {!selectedPath ? (
-              <div className="text-center py-12 px-4">
-                <Layers className="w-8 h-8 text-[var(--color-mid-gray)] mx-auto mb-3 opacity-50" />
-                <p className="text-sm font-medium text-[var(--color-ink)]">No path selected</p>
-                <p className="text-xs text-[var(--color-mid-gray)] mt-1">Select a path on the canvas to edit its properties</p>
+              <div className="text-center py-10 px-4">
+                <p className="text-xs font-medium text-[var(--color-ink)]">No layer selected</p>
+                <p className="text-[10px] text-[var(--color-mid-gray)] mt-0.5">Select a layer to edit properties</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                
-                <CollapsibleSection id="layer-identity" title={selectedPath.type === 'image' ? "Image Layer" : "Vector Path Layer"} subtitle={selectedPath.type === 'image' ? `${Math.round(selectedPath.imageWidth || 0)}x${Math.round(selectedPath.imageHeight || 0)}` : (selectedPath.anchors ? `${selectedPath.anchors.length} Anchors` : '0 Anchors')}>
+              <div>
+                {/* ── Layer Header / Name + Quick Actions ── */}
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--color-surface-alt)]/40 border-b border-[var(--color-hairline)]">
                   <input
                     type="text"
                     value={selectedPath.name}
                     onChange={(e) => onUpdatePath(selectedPath.id, { name: e.target.value })}
-                    className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] px-2.5 py-1.5 text-xs text-[var(--color-ink)] focus:outline-none focus:border-[#00F2FF] font-medium mt-3"
-                    placeholder="Layer Name"
+                    className="flex-1 bg-transparent border border-transparent hover:border-[var(--color-hairline)] focus:border-[#00F2FF] rounded px-1.5 py-0.5 text-xs font-bold text-[var(--color-ink)] focus:outline-none truncate mr-2"
+                    title="Rename Layer"
                   />
-                </CollapsibleSection>
-
-                <CollapsibleSection id="stroke-props" title={<><Sliders className="w-3.5 h-3.5 text-[var(--color-ink)]" />Stroke Properties</>} subtitle="Adobe/Figma Spec">
-                  <div className="space-y-1.5 mt-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--color-mid-gray)] font-medium">Weight</span>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min="0.5"
-                          max="40"
-                          step="0.5"
-                          value={selectedPath.strokeWidth}
-                          onChange={(e) => onUpdatePath(selectedPath.id, { strokeWidth: Math.max(0.5, parseFloat(e.target.value) || 1) })}
-                          className="w-14 text-right bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-0.5 text-xs text-[var(--color-ink)] font-mono focus:outline-none focus:border-[#00F2FF]"
-                        />
-                        <span className="text-[var(--color-mid-gray)] text-[11px]">px</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min="1"
-                        max="32"
-                        step="0.5"
-                        value={selectedPath.strokeWidth}
-                        onChange={(e) => onUpdatePath(selectedPath.id, { strokeWidth: parseFloat(e.target.value) })}
-                        className="flex-1 accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
-                      />
-                    </div>
-                    <div className="flex gap-1 pt-1">
-                      {[1, 2, 4, 8, 12, 16].map(w => (
-                        <button
-                          key={w}
-                          onClick={() => onUpdatePath(selectedPath.id, { strokeWidth: w })}
-                          className={`flex-1 py-1 rounded text-[10px] font-mono border transition-all ${
-                            selectedPath.strokeWidth === w 
-                              ? 'bg-[var(--color-ink)] border-[var(--color-ink)] text-[var(--color-canvas)]'
-                              : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:border-[var(--color-mid-gray)]'
-                          }`}
-                        >
-                          {w}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
-                    <div className="flex justify-between text-xs mb-2">
-                      <span className="text-[var(--color-mid-gray)] font-medium">Corner Join</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1">
-                      <button
-                        onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'round' })}
-                        className={`flex flex-col items-center gap-1.5 py-1.5 rounded border transition-all text-[10px] ${
-                          selectedPath.lineJoin === 'round' || !selectedPath.lineJoin
-                            ? 'bg-[var(--color-surface-alt)] border-[var(--color-ink)] text-[var(--color-ink)]'
-                            : 'bg-transparent border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-                        }`}
-                      >
-                        Round
-                      </button>
-                      <button
-                        onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'miter' })}
-                        className={`flex flex-col items-center gap-1.5 py-1.5 rounded border transition-all text-[10px] ${
-                          selectedPath.lineJoin === 'miter'
-                            ? 'bg-[var(--color-surface-alt)] border-[var(--color-ink)] text-[var(--color-ink)]'
-                            : 'bg-transparent border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-                        }`}
-                      >
-                        Miter
-                      </button>
-                      <button
-                        onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'bevel' })}
-                        className={`flex flex-col items-center gap-1.5 py-1.5 rounded border transition-all text-[10px] ${
-                          selectedPath.lineJoin === 'bevel'
-                            ? 'bg-[var(--color-surface-alt)] border-[var(--color-ink)] text-[var(--color-ink)]'
-                            : 'bg-transparent border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-                        }`}
-                      >
-                        Bevel
-                      </button>
-                    </div>
-                  </div>
-                </CollapsibleSection>
-
-                <CollapsibleSection id="dash-patterns" title={<><Sparkles className="w-3.5 h-3.5 text-[var(--color-ink)]" />Dash Patterns</>} subtitle="Illustrator Matrix">
-                  <div className="flex items-center gap-2 mt-3 mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
-                      Enable Dashes
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={selectedPath.dashPreset !== 'solid'}
-                      onChange={(e) => {
-                        onUpdatePath(selectedPath.id, { 
-                          dashPreset: e.target.checked ? 'custom' : 'solid',
-                          customDashLength: selectedPath.customDashLength || 24,
-                          customGapLength: selectedPath.customGapLength || 12
-                        });
-                      }}
-                      className="w-4 h-4 rounded accent-[var(--color-ink)] cursor-pointer"
-                    />
-                  </div>
-                  
-                  {selectedPath.dashPreset !== 'solid' && (
-                    <div className="space-y-3 pt-2">
-                      <div className="flex gap-2">
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[10px] text-[var(--color-mid-gray)] font-mono uppercase tracking-wider">Dash (px)</label>
-                          <input
-                            type="number"
-                            value={selectedPath.customDashLength || 24}
-                            onChange={(e) => onUpdatePath(selectedPath.id, { 
-                              customDashLength: parseFloat(e.target.value) || 0,
-                              dashPreset: 'custom'
-                            })}
-                            className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs font-mono text-[var(--color-ink)] focus:outline-none focus:border-[#00F2FF]"
-                          />
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[10px] text-[var(--color-mid-gray)] font-mono uppercase tracking-wider">Gap (px)</label>
-                          <input
-                            type="number"
-                            value={selectedPath.customGapLength || 12}
-                            onChange={(e) => onUpdatePath(selectedPath.id, { 
-                              customGapLength: parseFloat(e.target.value) || 0,
-                              dashPreset: 'custom'
-                            })}
-                            className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs font-mono text-[var(--color-ink)] focus:outline-none focus:border-[#00F2FF]"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2 pt-1 border-t border-[var(--color-hairline)]">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-mid-gray)]">Presets</span>
-                        <div className="grid grid-cols-3 gap-1">
-                          {DASH_PRESETS.filter(p => p.id !== 'solid').map(dp => (
-                            <button
-                              key={dp.id}
-                              onClick={() => onUpdatePath(selectedPath.id, { 
-                                dashPreset: dp.id,
-                                customDashLength: dp.dashLength,
-                                customGapLength: dp.gapLength
-                              })}
-                              className={`py-1.5 rounded border text-[10px] font-medium transition-all ${
-                                selectedPath.dashPreset === dp.id
-                                  ? 'bg-[var(--color-ink)] border-[var(--color-ink)] text-[var(--color-canvas)]'
-                                  : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:border-[var(--color-mid-gray)]'
-                              }`}
-                            >
-                              {dp.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CollapsibleSection>
-
-                <CollapsibleSection id="color-appearance" title={<><Palette className="w-3.5 h-3.5 text-[var(--color-ink)]" />Color & Appearance</>}>
-                  <div className="flex items-center gap-2 mt-3 mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5 flex-1">
-                      Solid Color
-                    </span>
-                    <input
-                      type="color"
-                      value={selectedPath.color}
-                      onChange={(e) => onUpdatePath(selectedPath.id, { color: e.target.value, gradientId: '' })}
-                      className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-                      title="Pick Solid Color"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {GRADIENT_PRESETS.map(preset => (
-                      <button
-                        key={preset.id}
-                        onClick={() => onUpdatePath(selectedPath.id, { gradientId: preset.id })}
-                        className={`p-2.5 rounded-[24px] border flex items-center gap-2.5 transition-all text-left ${
-                          selectedPath.gradientId === preset.id
-                            ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)] ring-1 ring-pink-500/30'
-                            : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
-                        }`}
-                      >
-                        <div 
-                          className="w-5 h-5 rounded-[18px] shrink-0 border border-[var(--color-hairline)]" 
-                          style={{ background: preset.background }} 
-                        />
-                        <div className="overflow-hidden">
-                          <div className="text-[11px] font-medium text-[var(--color-ink)] truncate">{preset.name}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[var(--color-mid-gray)] font-medium">Path Opacity</span>
-                      <span className="text-[var(--color-ink)] font-mono">{Math.round((selectedPath.opacity ?? 1) * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1"
-                      step="0.05"
-                      value={selectedPath.opacity ?? 1}
-                      onChange={(e) => onUpdatePath(selectedPath.id, { opacity: parseFloat(e.target.value) })}
-                      className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-[var(--color-hairline)] flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-medium text-[var(--color-ink)] flex items-center gap-1.5">
-                        <Sparkle className="w-3.5 h-3.5 text-[var(--color-ink)]" />
-                        Neon Bloom Filter
-                      </div>
-                      <div className="text-[10px] text-[var(--color-mid-gray)]">Diffuse photonic glow emission</div>
-                    </div>
-                    <button
-                      onClick={() => onUpdatePath(selectedPath.id, { showGlow: !selectedPath.showGlow })}
-                      className={`w-10 h-5.5 rounded-full transition-colors relative p-0.5 ${
-                        selectedPath.showGlow ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)]'
-                      }`}
-                    >
-                      <div className={`w-4.5 h-4.5 rounded-full bg-black transition-transform ${
-                        selectedPath.showGlow ? 'translate-x-4.5' : 'translate-x-0'
-                      }`} />
-                    </button>
-                  </div>
-                </CollapsibleSection>
-
-                <CollapsibleSection id="flow-animation" title={<><Gauge className="w-3.5 h-3.5 text-[var(--color-ink)]" />Continuous Flow Animation</>} subtitle="Real-time">
-                  <div className="flex items-center justify-between pt-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedPath.flowSpeed > 0}
-                        onChange={(e) => onUpdatePath(selectedPath.id, { flowSpeed: e.target.checked ? 1.5 : 0 })}
-                        className="w-4 h-4 rounded accent-[var(--color-ink)] cursor-pointer"
-                      />
-                      <span className="text-xs font-medium text-[var(--color-ink)]">Enable Flow</span>
-                    </label>
-                  </div>
-                  
-                  {selectedPath.flowSpeed > 0 && (
-                    <div className="space-y-3 pt-2">
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-[var(--color-mid-gray)] font-medium">Flow Velocity</span>
-                          <span className="text-[var(--color-ink)] font-mono">{selectedPath.flowSpeed.toFixed(1)}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.1"
-                          max="5"
-                          step="0.1"
-                          value={selectedPath.flowSpeed}
-                          onChange={(e) => onUpdatePath(selectedPath.id, { flowSpeed: parseFloat(e.target.value) })}
-                          className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
-                        />
-                      </div>
-                      
-                      <div className="flex items-center justify-between pt-2 border-t border-[var(--color-hairline)]">
-                        <span className="text-xs text-[var(--color-mid-gray)] font-medium">Reverse Direction</span>
-                        <button
-                          onClick={() => onUpdatePath(selectedPath.id, { 
-                            flowDirection: selectedPath.flowDirection === 'forward' ? 'reverse' : 'forward' 
-                          })}
-                          className={`w-10 h-5.5 rounded-full transition-colors relative p-0.5 ${
-                            selectedPath.flowDirection === 'reverse' ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)]'
-                          }`}
-                        >
-                          <div className={`w-4.5 h-4.5 rounded-full bg-black transition-transform ${
-                            selectedPath.flowDirection === 'reverse' ? 'translate-x-4.5' : 'translate-x-0'
-                          }`} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </CollapsibleSection>
-
-                <CollapsibleSection id="path-actions" title={<><RotateCw className="w-3.5 h-3.5 text-[var(--color-ink)]" />Path Actions</>}>
-                  <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={() => {
-                        const duplicate = {
+                        const duplicate: DrawingPath = {
                           ...selectedPath,
-                          id: Math.random().toString(36).substr(2, 9),
+                          id: `path-${Date.now()}`,
                           name: `${selectedPath.name} Copy`,
-                          anchors: selectedPath.anchors.map(a => ({ ...a, x: a.x + 20, y: a.y + 20 }))
+                          x: (selectedPath.x || 0) + 20,
+                          y: (selectedPath.y || 0) + 20
                         };
-                        const updatedPaths = [...paths, duplicate];
+                        if (duplicate.anchors) {
+                          duplicate.anchors = duplicate.anchors.map(a => ({
+                            ...a,
+                            id: `anchor-${Math.random().toString(36).substr(2, 9)}`,
+                            point: { x: a.point.x + 20, y: a.point.y + 20 }
+                          }));
+                        }
+                        onAddPath(duplicate);
                         onSelectPath(duplicate.id);
-                        // Assuming the parent component has access to all paths, but onUpdatePath only updates one.
-                        // We actually can't duplicate perfectly here without an onAddPath prop. 
-                        // I will omit duplicate since it requires parent changes.
                       }}
-                      className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] text-[11px] font-medium text-[var(--color-ink)] hover:bg-[var(--color-hairline)] transition-colors"
-                      disabled
+                      title="Duplicate Layer"
+                      className="p-1 text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)] rounded transition-colors"
                     >
                       <Layers className="w-3.5 h-3.5" />
-                      Duplicate
                     </button>
                     <button
                       onClick={() => onDeletePath(selectedPath.id)}
-                      className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-red-500/10 border border-red-500/20 text-[11px] font-medium text-red-500 hover:bg-red-500/20 transition-colors"
+                      title="Delete Layer"
+                      className="p-1 text-[var(--color-mid-gray)] hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Delete
                     </button>
+                  </div>
+                </div>
+
+                {/* ── Section 1: Merged Transform & Appearance ── */}
+                <CollapsibleSection id="transform-appearance" title="Transform & Appearance">
+                  <div className="space-y-1.5">
+                    {/* Row 1: X & Y (+ W & H for image) */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                        <span className="text-[10px] text-[var(--color-mid-gray)] w-3.5 font-mono select-none">X</span>
+                        <input
+                          type="number"
+                          value={selectedPath.x || 0}
+                          onChange={e => onUpdatePath(selectedPath.id, { x: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                        <span className="text-[10px] text-[var(--color-mid-gray)] w-3.5 font-mono select-none">Y</span>
+                        <input
+                          type="number"
+                          value={selectedPath.y || 0}
+                          onChange={e => onUpdatePath(selectedPath.id, { y: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                        />
+                      </div>
+                      {selectedPath.type === 'image' && (
+                        <>
+                          <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                            <span className="text-[10px] text-[var(--color-mid-gray)] w-3.5 font-mono select-none">W</span>
+                            <input
+                              type="number"
+                              value={selectedPath.imageWidth || 0}
+                              onChange={e => onUpdatePath(selectedPath.id, { imageWidth: parseFloat(e.target.value) || 0 })}
+                              className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                            <span className="text-[10px] text-[var(--color-mid-gray)] w-3.5 font-mono select-none">H</span>
+                            <input
+                              type="number"
+                              value={selectedPath.imageHeight || 0}
+                              onChange={e => onUpdatePath(selectedPath.id, { imageHeight: parseFloat(e.target.value) || 0 })}
+                              className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Row 2: Opacity %, Corner Radius, Glow toggle */}
+                    <div className="flex items-center gap-1.5">
+                      {/* Opacity */}
+                      <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors" title="Layer Opacity">
+                        <Eye className="w-3 h-3 text-[var(--color-mid-gray)] mr-1.5 shrink-0" />
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={Math.round((selectedPath.opacity ?? 1) * 100)}
+                          onChange={e => onUpdatePath(selectedPath.id, { opacity: (parseFloat(e.target.value) || 0) / 100 })}
+                          className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                        />
+                        <span className="text-[10px] text-[var(--color-mid-gray)] font-mono select-none">%</span>
+                      </div>
+
+                      {/* Corner Radius */}
+                      <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors" title="Corner Radius">
+                        <CornerUpRight className="w-3 h-3 text-[var(--color-mid-gray)] mr-1.5 shrink-0" />
+                        <input
+                          type="number"
+                          min="0"
+                          value={selectedPath.cornerRadius || 0}
+                          onChange={e => onUpdatePath(selectedPath.id, { cornerRadius: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      {/* Glow Button */}
+                      <button
+                        onClick={() => onUpdatePath(selectedPath.id, { showGlow: !selectedPath.showGlow })}
+                        title={selectedPath.showGlow ? "Disable Bloom Glow" : "Enable Bloom Glow"}
+                        className={`flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-medium transition-all ${
+                          selectedPath.showGlow
+                            ? 'bg-[var(--color-ink)] border-[var(--color-ink)] text-[var(--color-canvas)]'
+                            : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:border-[var(--color-mid-gray)]'
+                        }`}
+                      >
+                        <Sparkle className="w-3 h-3 shrink-0" />
+                        <span className="text-[10px]">Glow</span>
+                      </button>
+                    </div>
+                  </div>
+                </CollapsibleSection>
+
+                {/* ── Section 2: Merged Stroke + Fill + Endpoints ── */}
+                {selectedPath.type !== 'image' && (
+                  <CollapsibleSection id="stroke-fill-endpoints" title="Stroke, Fill & Caps">
+                    <div className="space-y-2">
+                      {/* ── Stroke Row: Color swatch + Hex + Weight + Join ── */}
+                      <div className="flex items-center gap-1.5">
+                        {/* Stroke Color */}
+                        <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                          <input
+                            type="color"
+                            value={selectedPath.color}
+                            onChange={e => onUpdatePath(selectedPath.id, { color: e.target.value, gradientId: '' })}
+                            className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0 mr-1.5 shrink-0"
+                            title="Stroke Color"
+                          />
+                          <input
+                            type="text"
+                            value={selectedPath.color}
+                            onChange={e => onUpdatePath(selectedPath.id, { color: e.target.value, gradientId: '' })}
+                            className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono uppercase"
+                          />
+                        </div>
+
+                        {/* Stroke Weight */}
+                        <div className="flex w-20 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors" title="Stroke Weight (px)">
+                          <Sliders className="w-3 h-3 text-[var(--color-mid-gray)] mr-1 shrink-0" />
+                          <input
+                            type="number"
+                            min="0.5"
+                            step="0.5"
+                            value={selectedPath.strokeWidth}
+                            onChange={e => onUpdatePath(selectedPath.id, { strokeWidth: Math.max(0.5, parseFloat(e.target.value) || 1) })}
+                            className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                          />
+                        </div>
+
+                        {/* Line Join */}
+                        <select
+                          value={selectedPath.lineJoin || 'round'}
+                          onChange={e => onUpdatePath(selectedPath.id, { lineJoin: e.target.value as 'round' | 'miter' | 'bevel' })}
+                          className="w-20 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-1 text-[11px] text-[var(--color-ink)] focus:outline-none cursor-pointer"
+                          title="Line Join"
+                        >
+                          <option value="round">Round</option>
+                          <option value="miter">Miter</option>
+                          <option value="bevel">Bevel</option>
+                        </select>
+                      </div>
+
+                      {/* ── Fill Row: Checkbox + Color Swatch + Hex + Fill Opacity ── */}
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title="Enable Solid Fill">
+                          <input
+                            type="checkbox"
+                            checked={!!selectedPath.fill}
+                            onChange={e => onUpdatePath(selectedPath.id, { fill: e.target.checked ? '#ffffff' : undefined })}
+                            className="accent-[var(--color-ink)] w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] text-[var(--color-mid-gray)] font-medium">Fill</span>
+                        </label>
+
+                        {selectedPath.fill ? (
+                          <>
+                            <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors">
+                              <input
+                                type="color"
+                                value={selectedPath.fill}
+                                onChange={e => onUpdatePath(selectedPath.id, { fill: e.target.value })}
+                                className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0 mr-1.5 shrink-0"
+                              />
+                              <input
+                                type="text"
+                                value={selectedPath.fill}
+                                onChange={e => onUpdatePath(selectedPath.id, { fill: e.target.value })}
+                                className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono uppercase"
+                              />
+                            </div>
+                            <div className="flex w-16 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded hover:border-[var(--color-ink)] focus-within:border-[#00F2FF] px-2 py-1 transition-colors" title="Fill Opacity">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={Math.round((selectedPath.fillOpacity ?? 1) * 100)}
+                                onChange={e => onUpdatePath(selectedPath.id, { fillOpacity: (parseFloat(e.target.value) || 0) / 100 })}
+                                className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono text-right"
+                              />
+                              <span className="text-[10px] text-[var(--color-mid-gray)] ml-0.5">%</span>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-[var(--color-mid-gray)] italic">None</span>
+                        )}
+                      </div>
+
+                      {/* ── Dashes Row: Checkbox + Dash + Gap ── */}
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-[var(--color-hairline)]/60">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedPath.dashPreset !== 'solid'}
+                            onChange={e => onUpdatePath(selectedPath.id, {
+                              dashPreset: e.target.checked ? 'custom' : 'solid',
+                              customDashLength: selectedPath.customDashLength || 24,
+                              customGapLength: selectedPath.customGapLength || 12
+                            })}
+                            className="accent-[var(--color-ink)] w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] text-[var(--color-mid-gray)] font-medium">Dash</span>
+                        </label>
+
+                        {selectedPath.dashPreset !== 'solid' && (
+                          <>
+                            <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-0.5">
+                              <span className="text-[10px] text-[var(--color-mid-gray)] mr-1">Dash</span>
+                              <input
+                                type="number"
+                                value={selectedPath.customDashLength || 24}
+                                onChange={e => onUpdatePath(selectedPath.id, { customDashLength: parseFloat(e.target.value) || 0, dashPreset: 'custom' })}
+                                className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                              />
+                            </div>
+                            <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-0.5">
+                              <span className="text-[10px] text-[var(--color-mid-gray)] mr-1">Gap</span>
+                              <input
+                                type="number"
+                                value={selectedPath.customGapLength || 12}
+                                onChange={e => onUpdatePath(selectedPath.id, { customGapLength: parseFloat(e.target.value) || 0, dashPreset: 'custom' })}
+                                className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* ── Endpoints & Caps Row: Start Cap + Swap + End Cap ── */}
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-[var(--color-hairline)]/60">
+                        <select
+                          value={selectedPath.startCap || 'none'}
+                          onChange={e => onUpdatePath(selectedPath.id, { startCap: e.target.value as CapType })}
+                          className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
+                          title="Start Endpoint"
+                        >
+                          {CAP_PRESETS.map(cap => (
+                            <option key={`start-${cap.id}`} value={cap.id}>
+                              Start: {cap.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={() => onUpdatePath(selectedPath.id, {
+                            startCap: selectedPath.endCap || 'none',
+                            endCap: selectedPath.startCap || 'none'
+                          })}
+                          className="p-1.5 text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] bg-[var(--color-surface-alt)] hover:bg-[var(--color-hairline)] rounded border border-[var(--color-hairline)] transition-colors shrink-0"
+                          title="Swap Start ↔ End Caps"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                        </button>
+
+                        <select
+                          value={selectedPath.endCap || 'none'}
+                          onChange={e => onUpdatePath(selectedPath.id, { endCap: e.target.value as CapType })}
+                          className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
+                          title="End Endpoint"
+                        >
+                          {CAP_PRESETS.map(cap => (
+                            <option key={`end-${cap.id}`} value={cap.id}>
+                              End: {cap.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* ── Section 3: Merged Flow & Motion Animation ── */}
+                <CollapsibleSection id="animation" title="Flow & Motion" defaultExpanded={false}>
+                  <div className="space-y-2">
+                    {/* Flow Velocity Row */}
+                    <div className="flex items-center gap-1.5">
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title="Enable Continuous Flow">
+                        <input
+                          type="checkbox"
+                          checked={selectedPath.flowSpeed > 0}
+                          onChange={e => onUpdatePath(selectedPath.id, { flowSpeed: e.target.checked ? 1.5 : 0 })}
+                          className="accent-[var(--color-ink)] w-3.5 h-3.5"
+                        />
+                        <span className="text-[11px] text-[var(--color-mid-gray)] font-medium">Flow</span>
+                      </label>
+
+                      {selectedPath.flowSpeed > 0 && (
+                        <>
+                          <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-0.5" title="Flow Speed">
+                            <span className="text-[10px] text-[var(--color-mid-gray)] mr-1 font-mono">Speed</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={selectedPath.flowSpeed}
+                              onChange={e => onUpdatePath(selectedPath.id, { flowSpeed: parseFloat(e.target.value) || 0 })}
+                              className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                            />
+                          </div>
+                          <button
+                            onClick={() => onUpdatePath(selectedPath.id, { flowDirection: selectedPath.flowDirection === 'reverse' ? 'forward' : 'reverse' })}
+                            className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors ${
+                              selectedPath.flowDirection === 'reverse'
+                                ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
+                                : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] border-[var(--color-hairline)] hover:text-[var(--color-ink)]'
+                            }`}
+                            title="Reverse Flow Direction"
+                          >
+                            Reverse
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Arrow Flow / Chevrons Row */}
+                    <div className="flex items-center gap-1.5">
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title="Animated Chevrons">
+                        <input
+                          type="checkbox"
+                          checked={selectedPath.arrowFlow || false}
+                          onChange={e => onUpdatePath(selectedPath.id, { arrowFlow: e.target.checked })}
+                          className="accent-[var(--color-ink)] w-3.5 h-3.5"
+                        />
+                        <span className="text-[11px] text-[var(--color-mid-gray)] font-medium">Chevrons</span>
+                      </label>
+
+                      {selectedPath.arrowFlow && (
+                        <>
+                          <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-0.5" title="Chevron Size">
+                            <span className="text-[10px] text-[var(--color-mid-gray)] mr-1 font-mono">Size</span>
+                            <input
+                              type="number"
+                              value={selectedPath.arrowFlowSize || 14}
+                              onChange={e => onUpdatePath(selectedPath.id, { arrowFlowSize: parseFloat(e.target.value) || 14 })}
+                              className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div className="flex flex-1 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-0.5" title="Chevron Spacing">
+                            <span className="text-[10px] text-[var(--color-mid-gray)] mr-1 font-mono">Gap</span>
+                            <input
+                              type="number"
+                              value={selectedPath.arrowFlowSpacing || 70}
+                              onChange={e => onUpdatePath(selectedPath.id, { arrowFlowSpacing: parseFloat(e.target.value) || 70 })}
+                              className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Object Along Path Row */}
+                    <div className="flex items-center gap-1.5 pt-1 border-t border-[var(--color-hairline)]/60">
+                      <span className="text-[11px] text-[var(--color-mid-gray)] font-medium shrink-0">Object:</span>
+                      <select
+                        value={selectedPath.motionObjectId || ''}
+                        onChange={e => onUpdatePath(selectedPath.id, { motionObjectId: e.target.value || undefined })}
+                        className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
+                      >
+                        <option value="">— None —</option>
+                        {paths.filter(p => p.id !== selectedPath.id).map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      {selectedPath.motionObjectId && (
+                        <div className="flex w-16 items-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-0.5" title="Object Motion Speed">
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={selectedPath.motionSpeed || 1}
+                            onChange={e => onUpdatePath(selectedPath.id, { motionSpeed: parseFloat(e.target.value) || 1 })}
+                            className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono text-right"
+                          />
+                          <span className="text-[10px] text-[var(--color-mid-gray)] ml-0.5 font-mono">x</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CollapsibleSection>
               </div>
             )}
-          </div>
+          </>
         )}
 
         {activeTab === 'settings' && (
-          <div className="p-4 space-y-4">
+          <div>
+            {/* Canvas Smoothing */}
             <CollapsibleSection id="settings-pencil" title="Pencil Smoothing (N)">
-              <div className="flex justify-between text-xs mt-3 mb-2">
-                <span className="text-[var(--color-mid-gray)] font-medium">Smoothing Level</span>
-                <span className="text-[var(--color-ink)] font-mono">{settings.pencilSmoothness || 6}px</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--color-mid-gray)] font-medium">Smoothing</span>
+                  <span className="text-[var(--color-ink)] font-mono">{settings.pencilSmoothness || 6}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  value={settings.pencilSmoothness || 6}
+                  onChange={(e) => onUpdateSettings({ pencilSmoothness: parseFloat(e.target.value) })}
+                  className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-full cursor-pointer"
+                />
               </div>
-              <input
-                type="range"
-                min="0"
-                max="20"
-                step="1"
-                value={settings.pencilSmoothness || 6}
-                onChange={(e) => onUpdateSettings({ pencilSmoothness: parseFloat(e.target.value) })}
-                className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
-              />
-              <p className="text-[10px] text-[var(--color-mid-gray)] mt-2">
-                Higher values create smoother curves but follow your cursor less strictly.
-              </p>
             </CollapsibleSection>
 
-            <CollapsibleSection id="settings-speed" title="Global Speed Multiplier">
-              <div className="flex justify-between text-xs mt-3 mb-2">
-                <span className="text-[var(--color-mid-gray)] font-medium">Multiplier</span>
-                <span className="text-[var(--color-ink)] font-mono">{settings.globalSpeed}x</span>
+            {/* Canvas Global Speed */}
+            <CollapsibleSection id="settings-speed" title="Global Speed">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--color-mid-gray)] font-medium">Multiplier</span>
+                  <span className="text-[var(--color-ink)] font-mono">{settings.globalSpeed}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3"
+                  step="0.1"
+                  value={settings.globalSpeed}
+                  onChange={(e) => onUpdateSettings({ globalSpeed: parseFloat(e.target.value) })}
+                  className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-full cursor-pointer"
+                />
               </div>
-              <input
-                type="range"
-                min="0.1"
-                max="3"
-                step="0.1"
-                value={settings.globalSpeed}
-                onChange={(e) => onUpdateSettings({ globalSpeed: parseFloat(e.target.value) })}
-                className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
-              />
             </CollapsibleSection>
 
-            <CollapsibleSection id="settings-grid" title="Background Grid">
-              <div className="flex items-center justify-between mt-3">
-                <span className="text-xs text-[var(--color-mid-gray)] font-medium">Show Canvas Grid</span>
-                <button
-                  onClick={() => onUpdateSettings({ showGrid: !settings.showGrid })}
-                  className={`w-10 h-5.5 rounded-full transition-colors relative p-0.5 ${
-                    settings.showGrid ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)]'
-                  }`}
-                >
-                  <div className={`w-4.5 h-4.5 rounded-full bg-black transition-transform ${
-                    settings.showGrid ? 'translate-x-4.5' : 'translate-x-0'
-                  }`} />
-                </button>
+            {/* Canvas Appearance */}
+            <CollapsibleSection id="settings-canvas" title="Canvas Appearance">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--color-mid-gray)] font-medium">Background Color</span>
+                  <input
+                    type="color"
+                    value={settings.backgroundColor || '#09090b'}
+                    onChange={(e) => onUpdateSettings({ backgroundColor: e.target.value })}
+                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-[var(--color-hairline)]/60">
+                  <span className="text-xs text-[var(--color-mid-gray)] font-medium">Show Canvas Grid</span>
+                  <input
+                    type="checkbox"
+                    checked={settings.showGrid}
+                    onChange={(e) => onUpdateSettings({ showGrid: e.target.checked })}
+                    className="accent-[var(--color-ink)] w-3.5 h-3.5 cursor-pointer"
+                  />
+                </div>
               </div>
             </CollapsibleSection>
           </div>

@@ -12,7 +12,7 @@ export interface AnchorPoint {
   boundTo?: { pathId: string; anchorId: string } | null;
 }
 
-export type DrawTool = 'select' | 'direct-select' | 'pen' | 'pencil' | 'curve' | 'line' | 'add-anchor' | 'delete-anchor' | 'freehand' | 'connector';
+export type DrawTool = 'select' | 'direct-select' | 'pen' | 'pencil' | 'curve' | 'line' | 'rect' | 'ellipse' | 'polygon' | 'star' | 'add-anchor' | 'delete-anchor' | 'freehand' | 'connector';
 
 export type CurveType = 
   | 'monotoneX'
@@ -51,6 +51,8 @@ export interface GradientPreset {
   background: string;
 }
 
+export type CapType = 'none' | 'arrow' | 'solidArrow' | 'circle' | 'diamond' | 'square' | 'bar';
+
 export interface DrawingPath {
   id: string;
   name: string;
@@ -73,6 +75,8 @@ export interface DrawingPath {
   label?: string;
   lineJumps?: boolean;
   color: string;
+  fill?: string;
+  fillOpacity?: number;
   gradientId: string;
   dashPreset: DashPresetId;
   customDashArray?: string;
@@ -85,10 +89,24 @@ export interface DrawingPath {
   showGlow: boolean;
   opacity: number;
   enabled: boolean;
+  locked?: boolean;
+  // Endpoint caps (Figma-style)
+  startCap?: CapType;
+  endCap?: CapType;
+  // Arrow flow animation: repeating animated arrows along path
+  arrowFlow?: boolean;
+  arrowFlowSize?: number;    // arrow head size px (default 12)
+  arrowFlowSpacing?: number; // gap between arrows (default 60)
+  // Object-along-path motion
+  motionObjectId?: string;   // ID of another layer to animate along this path
+  motionSpeed?: number;      // speed multiplier (default 1)
+  motionLoop?: boolean;      // loop (true) or bounce (false)
 }
 
 export interface ArtboardSettings {
   backgroundColor: string;
+  canvasBackground?: string; // New: editable background color
+  zoom?: number; // New: zoom level
   showGrid: boolean;
   gridSize: number;
   snapToGrid: boolean;
