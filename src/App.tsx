@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-
+import gifshot from 'gifshot';
 import { 
   DrawingPath, 
   DrawTool, 
@@ -23,7 +23,7 @@ import {
 } from './utils/bezier';
 
 const INITIAL_SETTINGS: ArtboardSettings = {
-  backgroundColor: '#050505',
+  backgroundColor: '#ffffff',
   showGrid: true,
   gridSize: 40,
   snapToGrid: false,
@@ -106,8 +106,24 @@ const getInitialPaths = (): DrawingPath[] => {
   ];
 };
 
+interface AppState {
+  paths: DrawingPath[];
+  history: DrawingPath[][];
+  historyIndex: number;
+}
+
 export default function App() {
-  const [paths, setPaths] = useState<DrawingPath[]>(getInitialPaths);
+  const [appState, setAppState] = useState<AppState>(() => {
+    const initial = getInitialPaths();
+    return {
+      paths: initial,
+      history: [initial],
+      historyIndex: 0
+    };
+  });
+  
+  const { paths, history, historyIndex } = appState;
+
   const [selectedPathId, setSelectedPathId] = useState<string | null>('path-wave');
   const [activeTool, setActiveTool] = useState<DrawTool>('direct-select');
   const [settings, setSettings] = useState<ArtboardSettings>(INITIAL_SETTINGS);
@@ -140,25 +156,125 @@ export default function App() {
     return () => cancelAnimationFrame(animId);
   }, []);
 
+  const updatePathsAndCommit = (updater: (prev: DrawingPath[]) => DrawingPath[]) => {
+    setAppState(prev => {
+      const newPaths = updater(prev.paths);
+      const newHistory = prev.history.slice(0, prev.historyIndex + 1);
+      newHistory.push(newPaths);
+      if (newHistory.length > 50) newHistory.shift();
+      return {
+        paths: newPaths,
+        history: newHistory,
+        historyIndex: newHistory.length - 1
+      };
+    });
+  };
+
+  const handleCommitHistory = () => {
+    setAppState(prev => {
+      const lastHistory = prev.history[prev.historyIndex];
+      // Skip if state hasn't changed
+      if (JSON.stringify(lastHistory) === JSON.stringify(prev.paths)) {
+        return prev;
+      }
+      const newHistory = prev.history.slice(0, prev.historyIndex + 1);
+      newHistory.push(prev.paths);
+      if (newHistory.length > 50) newHistory.shift();
+      return {
+        ...prev,
+        history: newHistory,
+        historyIndex: newHistory.length - 1
+      };
+    });
+  };
+
+  const handleUndo = () => {
+    setAppState(prev => {
+      if (prev.historyIndex > 0) {
+        const newIndex = prev.historyIndex - 1;
+        return {
+          ...prev,
+          paths: prev.history[newIndex],
+          historyIndex: newIndex
+        };
+      }
+      return prev;
+    });
+  };
+
+  const handleRedo = () => {
+    setAppState(prev => {
+      if (prev.historyIndex < prev.history.length - 1) {
+        const newIndex = prev.historyIndex + 1;
+        return {
+          ...prev,
+          paths: prev.history[newIndex],
+          historyIndex: newIndex
+        };
+      }
+      return prev;
+    });
+  };
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      handleCommitHistory();
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [paths]);
+
   const handleAddPath = (newPath: DrawingPath) => {
-    setPaths(prev => [...prev, newPath]);
+    updatePathsAndCommit(prev => [...prev, newPath]);
   };
 
   const handleUpdatePath = (id: string, updates: Partial<DrawingPath>) => {
-    setPaths(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    setAppState(prev => ({
+      ...prev,
+      paths: prev.paths.map(p => p.id === id ? { ...p, ...updates } : p)
+    }));
   };
 
   const handleDeletePath = (id: string) => {
-    setPaths(prev => prev.filter(p => p.id !== id));
+    updatePathsAndCommit(prev => prev.filter(p => p.id !== id));
     if (selectedPathId === id) {
       setSelectedPathId(null);
     }
   };
 
   const handleClearPaths = () => {
-    setPaths([]);
+    updatePathsAndCommit(() => []);
     setSelectedPathId(null);
   };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdOrCtrl && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if (cmdOrCtrl && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleRedo();
+      } else if (cmdOrCtrl && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!e.defaultPrevented && selectedPathId) {
+          e.preventDefault();
+          handleDeletePath(selectedPathId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleUndo, handleRedo, handleDeletePath, selectedPathId]);
 
   const handleAddPresetPath = (presetType: 'wave' | 'spiral' | 'infinity' | 'zigzag' | 'star' | 'circle') => {
     const res = createPresetAnchors(presetType, 900, 600);
@@ -185,7 +301,7 @@ export default function App() {
       opacity: 1,
       enabled: true
     };
-    setPaths(prev => [...prev, newPath]);
+    updatePathsAndCommit(prev => [...prev, newPath]);
     setSelectedPathId(id);
     setActiveTool('direct-select');
   };
@@ -260,7 +376,7 @@ export default function App() {
       const width = 720;
       const height = 480;
       const frameCount = 18;
-      const frames: any[] = [];
+      const frames: string[] = [];
 
       for (let f = 0; f < frameCount; f++) {
         const canvas = document.createElement('canvas');
@@ -277,31 +393,27 @@ export default function App() {
         });
 
         renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent);
-        frames.push({ data: canvas, delay: 70 });
+        frames.push(canvas.toDataURL('image/png'));
       }
 
-      import('modern-gif').then(({ encode }) => {
-        encode({
-          width,
-          height,
-          frames,
-          format: 'blob'
-        }).then((blob: Blob) => {
-          const url = URL.createObjectURL(blob);
+      gifshot.createGIF({
+        images: frames,
+        interval: 0.07,
+        gifWidth: width,
+        gifHeight: height,
+        numWorkers: 2
+      }, (obj: any) => {
+        if (!obj.error) {
+          const url = obj.image;
           const a = document.createElement('a');
           a.href = url;
           a.download = filename;
           a.click();
-          // Revoke the object URL after download
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
           resolve();
-        }).catch((err: any) => {
-          console.error('GIF export error:', err);
-          resolve();
-        });
-      }).catch(err => {
-        console.error('Failed to load modern-gif', err);
-        resolve();
+        } else {
+          console.error('GIF export error:', obj.error);
+          resolve(); // Resolve so batch export continues
+        }
       });
     });
   };
@@ -407,17 +519,21 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#050505] text-[#e0e0e0] font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--color-canvas)] text-[var(--color-ink)] font-sans">
       <Header
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying(!isPlaying)}
-        onReset={() => setPaths(getInitialPaths())}
+        onReset={() => setAppState({ paths: getInitialPaths(), history: [getInitialPaths()], historyIndex: 0 })}
         onOpenExport={() => setExportModalOpen(true)}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         sidebarOpen={sidebarOpen}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         fps={fps}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
       />
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -429,6 +545,7 @@ export default function App() {
           onUpdatePath={handleUpdatePath}
           onDeletePath={handleDeletePath}
           onClearPaths={handleClearPaths}
+          onCommitHistory={handleCommitHistory}
           activeTool={activeTool}
           setActiveTool={setActiveTool}
           settings={settings}

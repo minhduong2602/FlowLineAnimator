@@ -45,15 +45,15 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
   const selectedPath = paths.find(p => p.id === selectedPathId) || paths[0];
 
   return (
-    <aside className="w-80 lg:w-[380px] border-l border-white/5 bg-[#0d0d0f] flex flex-col h-[calc(100vh-4rem)] z-20 shrink-0 overflow-hidden select-none">
+    <aside className="w-80 lg:w-[380px] border-l border-[var(--color-hairline)] bg-[var(--color-surface-alt)] flex flex-col h-[calc(100vh-4rem)] z-20 shrink-0 overflow-hidden select-none">
       {/* Top Inspector Tab Bar */}
-      <div className="flex border-b border-white/10 bg-[#09090b] p-1.5 gap-1">
+      <div className="flex border-b border-[var(--color-hairline)] bg-[var(--color-paper)] p-1.5 gap-1">
         <button
           onClick={() => setActiveTab('style')}
-          className={`flex-1 py-2 px-1.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+          className={`flex-1 py-2 px-1.5 rounded-[18px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
             activeTab === 'style' 
-              ? 'bg-[#18181b] text-[#00F2FF] shadow-sm border border-white/10' 
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
+              ? 'bg-[var(--color-surface-alt)] text-[var(--color-ink)]  border border-[var(--color-hairline)]' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Figma & Illustrator Stroke Inspector"
         >
@@ -62,10 +62,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('paths')}
-          className={`flex-1 py-2 px-1.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+          className={`flex-1 py-2 px-1.5 rounded-[18px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
             activeTab === 'paths' 
-              ? 'bg-[#18181b] text-[#00F2FF] shadow-sm border border-white/10' 
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
+              ? 'bg-[var(--color-surface-alt)] text-[var(--color-ink)]  border border-[var(--color-hairline)]' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Vector Layers"
         >
@@ -74,10 +74,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('presets')}
-          className={`flex-1 py-2 px-1.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+          className={`flex-1 py-2 px-1.5 rounded-[18px] text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
             activeTab === 'presets' 
-              ? 'bg-[#18181b] text-[#00F2FF] shadow-sm border border-white/10' 
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
+              ? 'bg-[var(--color-surface-alt)] text-[var(--color-ink)]  border border-[var(--color-hairline)]' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Vector Shapes & Curves"
         >
@@ -86,10 +86,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('settings')}
-          className={`p-2 rounded-lg text-[11px] font-medium flex items-center justify-center transition-all ${
+          className={`p-2 rounded-[18px] text-[11px] font-medium flex items-center justify-center transition-all ${
             activeTab === 'settings' 
-              ? 'bg-[#18181b] text-[#00F2FF] shadow-sm border border-white/10' 
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
+              ? 'bg-[var(--color-surface-alt)] text-[var(--color-ink)]  border border-[var(--color-hairline)]' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Artboard Settings"
         >
@@ -105,18 +105,18 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         {activeTab === 'style' && (
           <div className="space-y-4">
             {!selectedPath ? (
-              <div className="text-center py-16 text-xs text-zinc-500 border border-dashed border-white/10 rounded-2xl p-6">
-                <Sliders className="w-8 h-8 mx-auto text-zinc-600 mb-2" />
-                <p className="font-semibold text-zinc-400">No Vector Path Selected</p>
-                <p className="text-[11px] text-zinc-500 mt-1">Select a layer or draw on the artboard to open the Stroke properties inspector.</p>
+              <div className="text-center py-16 text-xs text-[var(--color-mid-gray)] border border-dashed border-[var(--color-hairline)] rounded-[24px] p-6">
+                <Sliders className="w-8 h-8 mx-auto text-[var(--color-mid-gray)] mb-2" />
+                <p className="font-semibold text-[var(--color-mid-gray)]">No Vector Path Selected</p>
+                <p className="text-[11px] text-[var(--color-mid-gray)] mt-1">Select a layer or draw on the artboard to open the Stroke properties inspector.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {/* Layer Identity Card */}
-                <div className="bg-[#141417] border border-white/10 rounded-xl p-3 space-y-2">
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">Vector Path Layer</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-[#00F2FF]">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-mid-gray)]">Vector Path Layer</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--color-surface-alt)] text-[var(--color-ink)]">
                       {selectedPath.anchors ? selectedPath.anchors.length : 0} Anchors {selectedPath.closed ? '• Closed' : ''}
                     </span>
                   </div>
@@ -124,25 +124,25 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                     type="text"
                     value={selectedPath.name}
                     onChange={(e) => onUpdatePath(selectedPath.id, { name: e.target.value })}
-                    className="w-full bg-[#1c1c21] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#00F2FF] font-medium"
+                    className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] px-2.5 py-1.5 text-xs text-[var(--color-ink)] focus:outline-none focus:border-[#00F2FF] font-medium"
                     placeholder="Layer Name"
                   />
                 </div>
 
                 {/* 1. STROKE WEIGHT & CORNER RADIUS SECTION (Illustrator Style) */}
-                <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-[#00F2FF]" />
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-[var(--color-ink)]" />
                       Stroke Properties
                     </span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Adobe/Figma Spec</span>
+                    <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">Adobe/Figma Spec</span>
                   </div>
 
                   {/* Weight / Thickness */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Weight</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Weight</span>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
@@ -151,9 +151,9 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           step="0.5"
                           value={selectedPath.strokeWidth}
                           onChange={(e) => onUpdatePath(selectedPath.id, { strokeWidth: Math.max(0.5, parseFloat(e.target.value) || 1) })}
-                          className="w-14 text-right bg-[#1c1c21] border border-white/10 rounded px-1.5 py-0.5 text-xs text-[#00F2FF] font-mono focus:outline-none focus:border-[#00F2FF]"
+                          className="w-14 text-right bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-0.5 text-xs text-[var(--color-ink)] font-mono focus:outline-none focus:border-[#00F2FF]"
                         />
-                        <span className="text-zinc-500 text-[11px]">px</span>
+                        <span className="text-[var(--color-mid-gray)] text-[11px]">px</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -164,7 +164,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         step="0.5"
                         value={selectedPath.strokeWidth}
                         onChange={(e) => onUpdatePath(selectedPath.id, { strokeWidth: parseFloat(e.target.value) })}
-                        className="flex-1 accent-[#00F2FF] bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                        className="flex-1 accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                       />
                     </div>
                     {/* Quick presets buttons */}
@@ -175,8 +175,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           onClick={() => onUpdatePath(selectedPath.id, { strokeWidth: w })}
                           className={`flex-1 py-1 rounded text-[10px] font-mono border transition-all ${
                             selectedPath.strokeWidth === w 
-                              ? 'bg-[#00F2FF]/20 border-[#00F2FF]/50 text-[#00F2FF]' 
-                              : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]' 
+                              : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                           }`}
                         >
                           {w}px
@@ -186,10 +186,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                   </div>
 
                   {/* Corner Radius (Fillet) Adjustment */}
-                  <div className="space-y-1.5 pt-2 border-t border-white/5">
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-medium flex items-center gap-1">
-                        <CornerUpRight className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-[var(--color-mid-gray)] font-medium flex items-center gap-1">
+                        <CornerUpRight className="w-3.5 h-3.5 text-[var(--color-ink)]" />
                         Corner Radius
                       </span>
                       <div className="flex items-center gap-1.5">
@@ -200,9 +200,9 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           step="1"
                           value={selectedPath.cornerRadius || 0}
                           onChange={(e) => onUpdatePath(selectedPath.id, { cornerRadius: Math.max(0, Math.min(50, parseFloat(e.target.value) || 0)) })}
-                          className="w-14 text-right bg-[#1c1c21] border border-white/10 rounded px-1.5 py-0.5 text-xs text-amber-400 font-mono focus:outline-none focus:border-amber-400"
+                          className="w-14 text-right bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-0.5 text-xs text-[var(--color-ink)] font-mono focus:outline-none focus:border-amber-400"
                         />
-                        <span className="text-zinc-500 text-[11px]">px</span>
+                        <span className="text-[var(--color-mid-gray)] text-[11px]">px</span>
                       </div>
                     </div>
                     <input
@@ -212,7 +212,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       step="1"
                       value={selectedPath.cornerRadius || 0}
                       onChange={(e) => onUpdatePath(selectedPath.id, { cornerRadius: parseFloat(e.target.value) })}
-                      className="w-full accent-amber-400 bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                      className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                     />
                     <div className="flex gap-1 pt-0.5">
                       {[0, 6, 12, 20, 32].map(r => (
@@ -221,8 +221,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           onClick={() => onUpdatePath(selectedPath.id, { cornerRadius: r })}
                           className={`flex-1 py-1 rounded text-[10px] font-mono border transition-all ${
                             (selectedPath.cornerRadius || 0) === r 
-                              ? 'bg-amber-400/20 border-amber-400/50 text-amber-300' 
-                              : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]' 
+                              : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                           }`}
                         >
                           {r}px
@@ -232,19 +232,19 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                   </div>
 
                   {/* Stroke Cap Segmented Control (Illustrator Style) */}
-                  <div className="space-y-1.5 pt-2 border-t border-white/5">
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Cap</span>
-                      <span className="text-[10px] text-zinc-500 font-mono capitalize">{selectedPath.lineCap || 'round'}</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Cap</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono capitalize">{selectedPath.lineCap || 'round'}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1 bg-[#1a1a1f] p-1 rounded-lg border border-white/5">
+                    <div className="grid grid-cols-3 gap-1 bg-[var(--color-surface-alt)] p-1 rounded-[18px] border border-[var(--color-hairline)]">
                       {/* Butt Cap */}
                       <button
                         onClick={() => onUpdatePath(selectedPath.id, { lineCap: 'butt' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineCap || 'round') === 'butt'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Butt Cap (Sharp Edge)"
                       >
@@ -259,8 +259,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         onClick={() => onUpdatePath(selectedPath.id, { lineCap: 'round' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineCap || 'round') === 'round'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Round Cap (Pill Edge)"
                       >
@@ -275,8 +275,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         onClick={() => onUpdatePath(selectedPath.id, { lineCap: 'square' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineCap || 'round') === 'square'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Projecting Square Cap"
                       >
@@ -289,19 +289,19 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                   </div>
 
                   {/* Stroke Corner / Join Segmented Control (Illustrator Style) */}
-                  <div className="space-y-1.5 pt-2 border-t border-white/5">
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Corner Join</span>
-                      <span className="text-[10px] text-zinc-500 font-mono capitalize">{selectedPath.lineJoin || 'round'}</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Corner Join</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono capitalize">{selectedPath.lineJoin || 'round'}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1 bg-[#1a1a1f] p-1 rounded-lg border border-white/5">
+                    <div className="grid grid-cols-3 gap-1 bg-[var(--color-surface-alt)] p-1 rounded-[18px] border border-[var(--color-hairline)]">
                       {/* Miter Join */}
                       <button
                         onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'miter' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineJoin || 'round') === 'miter'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Miter Join (Pointed Corner)"
                       >
@@ -316,8 +316,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'round' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineJoin || 'round') === 'round'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Round Join (Smooth Curvature)"
                       >
@@ -332,8 +332,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         onClick={() => onUpdatePath(selectedPath.id, { lineJoin: 'bevel' })}
                         className={`py-1.5 px-2 rounded text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
                           (selectedPath.lineJoin || 'round') === 'bevel'
-                            ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-sm'
-                            : 'text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] '
+                            : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                         title="Bevel Join (Chamfered Corner)"
                       >
@@ -347,8 +347,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 </div>
 
                 {/* 2. ADOBE ILLUSTRATOR DASHED LINE PANEL */}
-                <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -360,22 +360,22 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                             customGapLength: selectedPath.customGapLength || 12
                           });
                         }}
-                        className="w-4 h-4 rounded accent-[#00F2FF] cursor-pointer"
+                        className="w-4 h-4 rounded accent-[var(--color-ink)] cursor-pointer"
                       />
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-200">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)]">
                         Dashed Line
                       </span>
                     </label>
-                    <span className="text-[10px] text-zinc-500 font-mono">Illustrator Matrix</span>
+                    <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">Illustrator Matrix</span>
                   </div>
 
                   {/* 4-Field Illustrator Dash/Gap Matrix */}
                   <div className="space-y-2">
                     <div className="grid grid-cols-4 gap-1.5 text-center">
-                      <span className="text-[10px] text-zinc-400 font-mono">dash 1</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">gap 1</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">dash 2</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">gap 2</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">dash 1</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">gap 1</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">dash 2</span>
+                      <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">gap 2</span>
                     </div>
                     <div className="grid grid-cols-4 gap-1.5">
                       <input
@@ -387,7 +387,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           dashPreset: 'custom',
                           customDashLength: Math.max(1, parseFloat(e.target.value) || 1) 
                         })}
-                        className="w-full text-center bg-[#1c1c21] border border-white/10 rounded-lg py-1 text-xs text-[#00F2FF] font-mono focus:outline-none focus:border-[#00F2FF]"
+                        className="w-full text-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] py-1 text-xs text-[var(--color-ink)] font-mono focus:outline-none focus:border-[#00F2FF]"
                       />
                       <input
                         type="number"
@@ -398,7 +398,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           dashPreset: 'custom',
                           customGapLength: Math.max(1, parseFloat(e.target.value) || 1) 
                         })}
-                        className="w-full text-center bg-[#1c1c21] border border-white/10 rounded-lg py-1 text-xs text-zinc-300 font-mono focus:outline-none focus:border-[#00F2FF]"
+                        className="w-full text-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] py-1 text-xs text-[var(--color-mid-gray)] font-mono focus:outline-none focus:border-[#00F2FF]"
                       />
                       <input
                         type="number"
@@ -409,7 +409,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           dashPreset: 'custom',
                           customDash2: Math.max(0, parseFloat(e.target.value) || 0) 
                         })}
-                        className="w-full text-center bg-[#1c1c21] border border-white/10 rounded-lg py-1 text-xs text-zinc-400 font-mono focus:outline-none focus:border-[#00F2FF]"
+                        className="w-full text-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] py-1 text-xs text-[var(--color-mid-gray)] font-mono focus:outline-none focus:border-[#00F2FF]"
                         placeholder="0"
                       />
                       <input
@@ -421,7 +421,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           dashPreset: 'custom',
                           customGap2: Math.max(0, parseFloat(e.target.value) || 0) 
                         })}
-                        className="w-full text-center bg-[#1c1c21] border border-white/10 rounded-lg py-1 text-xs text-zinc-400 font-mono focus:outline-none focus:border-[#00F2FF]"
+                        className="w-full text-center bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] py-1 text-xs text-[var(--color-mid-gray)] font-mono focus:outline-none focus:border-[#00F2FF]"
                         placeholder="0"
                       />
                     </div>
@@ -429,16 +429,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
 
                   {/* Dash Pattern Preset Chips */}
                   <div className="space-y-1.5 pt-1">
-                    <span className="text-[10px] uppercase tracking-wider text-zinc-400">Dash Presets</span>
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-mid-gray)]">Dash Presets</span>
                     <div className="grid grid-cols-3 gap-1.5">
                       {DASH_PRESETS.map(dp => (
                         <button
                           key={dp.id}
                           onClick={() => onUpdatePath(selectedPath.id, { dashPreset: dp.id })}
-                          className={`py-1.5 px-2 rounded-lg text-[10px] font-medium border text-center truncate transition-all ${
+                          className={`py-1.5 px-2 rounded-[18px] text-[10px] font-medium border text-center truncate transition-all ${
                             selectedPath.dashPreset === dp.id
-                              ? 'bg-[#00F2FF]/20 border-[#00F2FF]/40 text-[#00F2FF]'
-                              : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:text-white'
+                              ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]'
+                              : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                           }`}
                           title={`Pattern: ${dp.array}`}
                         >
@@ -450,10 +450,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 </div>
 
                 {/* 3. CHROMA GRADIENT & COLOR PALETTE */}
-                <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-1.5">
-                      <Palette className="w-3.5 h-3.5 text-pink-400" />
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-[var(--color-ink)]" />
                       Color & Appearance
                     </span>
                     <div className="flex items-center gap-2">
@@ -473,28 +473,28 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       <button
                         key={preset.id}
                         onClick={() => onUpdatePath(selectedPath.id, { gradientId: preset.id })}
-                        className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition-all text-left ${
+                        className={`p-2.5 rounded-[24px] border flex items-center gap-2.5 transition-all text-left ${
                           selectedPath.gradientId === preset.id
-                            ? 'bg-pink-500/10 border-pink-500/40 text-white ring-1 ring-pink-500/30'
-                            : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:bg-zinc-800'
+                            ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)] ring-1 ring-pink-500/30'
+                            : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
                         }`}
                       >
                         <div 
-                          className="w-5 h-5 rounded-lg shadow-sm shrink-0 border border-white/10" 
+                          className="w-5 h-5 rounded-[18px]  shrink-0 border border-[var(--color-hairline)]" 
                           style={{ background: preset.background }} 
                         />
                         <div className="overflow-hidden">
-                          <div className="text-[11px] font-medium text-white truncate">{preset.name}</div>
+                          <div className="text-[11px] font-medium text-[var(--color-ink)] truncate">{preset.name}</div>
                         </div>
                       </button>
                     ))}
                   </div>
 
                   {/* Opacity Slider */}
-                  <div className="space-y-1.5 pt-2 border-t border-white/5">
+                  <div className="space-y-1.5 pt-2 border-t border-[var(--color-hairline)]">
                     <div className="flex justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Path Opacity</span>
-                      <span className="text-[#00F2FF] font-mono">{Math.round((selectedPath.opacity ?? 1) * 100)}%</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Path Opacity</span>
+                      <span className="text-[var(--color-ink)] font-mono">{Math.round((selectedPath.opacity ?? 1) * 100)}%</span>
                     </div>
                     <input
                       type="range"
@@ -503,23 +503,23 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       step="0.05"
                       value={selectedPath.opacity ?? 1}
                       onChange={(e) => onUpdatePath(selectedPath.id, { opacity: parseFloat(e.target.value) })}
-                      className="w-full accent-[#00F2FF] bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                      className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                     />
                   </div>
 
                   {/* Neon Glow Toggle */}
-                  <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                  <div className="pt-2 border-t border-[var(--color-hairline)] flex items-center justify-between">
                     <div>
-                      <div className="text-xs font-medium text-white flex items-center gap-1.5">
-                        <Sparkle className="w-3.5 h-3.5 text-[#00F2FF]" />
+                      <div className="text-xs font-medium text-[var(--color-ink)] flex items-center gap-1.5">
+                        <Sparkle className="w-3.5 h-3.5 text-[var(--color-ink)]" />
                         Neon Bloom Filter
                       </div>
-                      <div className="text-[10px] text-zinc-500">Diffuse photonic glow emission</div>
+                      <div className="text-[10px] text-[var(--color-mid-gray)]">Diffuse photonic glow emission</div>
                     </div>
                     <button
                       onClick={() => onUpdatePath(selectedPath.id, { showGlow: !selectedPath.showGlow })}
                       className={`w-10 h-5.5 rounded-full transition-colors relative p-0.5 ${
-                        selectedPath.showGlow ? 'bg-[#00F2FF]' : 'bg-zinc-800'
+                        selectedPath.showGlow ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)]'
                       }`}
                     >
                       <div className={`w-4.5 h-4.5 rounded-full bg-black transition-transform ${
@@ -530,20 +530,20 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 </div>
 
                 {/* 4. CONTINUOUS FLOW ANIMATION VECTOR */}
-                <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-1.5">
-                      <Gauge className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-[var(--color-hairline)] pb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-1.5">
+                      <Gauge className="w-3.5 h-3.5 text-[var(--color-ink)]" />
                       Continuous Flow Animation
                     </span>
-                    <span className="text-[10px] text-zinc-500 font-mono">Real-time</span>
+                    <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">Real-time</span>
                   </div>
 
                   {/* Flow Speed Multiplier */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Flow Velocity</span>
-                      <span className="text-emerald-400 font-mono">{selectedPath.flowSpeed}x</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Flow Velocity</span>
+                      <span className="text-[var(--color-ink)] font-mono">{selectedPath.flowSpeed}x</span>
                     </div>
                     <input
                       type="range"
@@ -552,22 +552,22 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       step="0.1"
                       value={selectedPath.flowSpeed}
                       onChange={(e) => onUpdatePath(selectedPath.id, { flowSpeed: parseFloat(e.target.value) })}
-                      className="w-full accent-emerald-400 bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                      className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                     />
                   </div>
 
                   {/* Flow Direction Segmented Toggle */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs">
-                      <span className="text-zinc-400 font-medium">Flow Direction</span>
+                      <span className="text-[var(--color-mid-gray)] font-medium">Flow Direction</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => onUpdatePath(selectedPath.id, { flowDirection: 'forward' })}
-                        className={`py-2 rounded-lg text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
+                        className={`py-2 rounded-[18px] text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
                           selectedPath.flowDirection === 'forward'
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                            : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]'
+                            : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                       >
                         <RotateCw className="w-3.5 h-3.5" />
@@ -575,10 +575,10 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       </button>
                       <button
                         onClick={() => onUpdatePath(selectedPath.id, { flowDirection: 'reverse' })}
-                        className={`py-2 rounded-lg text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
+                        className={`py-2 rounded-[18px] text-xs font-medium border transition-all flex items-center justify-center gap-1.5 ${
                           selectedPath.flowDirection === 'reverse'
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                            : 'bg-[#1a1a1f] border-white/5 text-zinc-400 hover:text-white'
+                            ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]'
+                            : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
                         }`}
                       >
                         <RotateCw className="w-3.5 h-3.5 -scale-x-100" />
@@ -599,16 +599,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 font-bold">Layers Stack ({paths.length})</label>
-                <p className="text-[11px] text-zinc-500">Select any layer to inspect handles & anchor points.</p>
+                <label className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-mid-gray)] font-bold">Layers Stack ({paths.length})</label>
+                <p className="text-[11px] text-[var(--color-mid-gray)]">Select any layer to inspect handles & anchor points.</p>
               </div>
             </div>
 
             {paths.length === 0 ? (
-              <div className="text-center py-12 border border-dashed border-white/10 rounded-2xl p-6">
-                <Compass className="w-8 h-8 text-zinc-600 mx-auto mb-3 animate-spin" style={{ animationDuration: '10s' }} />
-                <h4 className="text-xs font-semibold text-white">No Paths Drawn Yet</h4>
-                <p className="text-[11px] text-zinc-500 mt-1">Use the Pen (P) or Smooth Pencil (N) on the canvas, or pick a preset.</p>
+              <div className="text-center py-12 border border-dashed border-[var(--color-hairline)] rounded-[24px] p-6">
+                <Compass className="w-8 h-8 text-[var(--color-mid-gray)] mx-auto mb-3 animate-spin" style={{ animationDuration: '10s' }} />
+                <h4 className="text-xs font-semibold text-[var(--color-ink)]">No Paths Drawn Yet</h4>
+                <p className="text-[11px] text-[var(--color-mid-gray)] mt-1">Use the Pen (P) or Smooth Pencil (N) on the canvas, or pick a preset.</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -619,20 +619,20 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       onSelectPath(path.id);
                       setActiveTab('style');
                     }}
-                    className={`p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                    className={`p-3 rounded-[24px] border transition-all flex items-center justify-between cursor-pointer ${
                       selectedPathId === path.id
-                        ? 'bg-[#00F2FF]/10 border-[#00F2FF]/40 text-white shadow-lg shadow-[#00F2FF]/5'
-                        : 'bg-[#141417] border-white/5 text-zinc-400 hover:bg-zinc-900'
+                        ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] '
+                        : 'bg-[var(--color-paper)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:bg-[var(--color-surface-alt)]'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <div 
-                        className="w-3.5 h-3.5 rounded-full shadow-sm shrink-0"
+                        className="w-3.5 h-3.5 rounded-full  shrink-0"
                         style={{ background: GRADIENT_PRESETS.find(g => g.id === path.gradientId)?.background || path.color }}
                       />
                       <div>
-                        <div className="text-xs font-semibold text-white truncate max-w-[140px]">{path.name}</div>
-                        <div className="text-[10px] text-zinc-500 uppercase font-mono">
+                        <div className="text-xs font-semibold text-[var(--color-ink)] truncate max-w-[140px]">{path.name}</div>
+                        <div className="text-[10px] text-[var(--color-mid-gray)] uppercase font-mono">
                           {path.strokeWidth}px • {path.anchors ? path.anchors.length : 0} Anchors {path.closed ? '• Closed' : ''}
                         </div>
                       </div>
@@ -640,8 +640,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={(e) => { e.stopPropagation(); onUpdatePath(path.id, { enabled: !path.enabled }); }}
-                        className={`p-1.5 rounded-lg border transition-all ${
-                          path.enabled ? 'bg-[#00F2FF]/10 border-[#00F2FF]/30 text-[#00F2FF]' : 'bg-zinc-900 border-white/10 text-zinc-600'
+                        className={`p-1.5 rounded-[18px] border transition-all ${
+                          path.enabled ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)]'
                         }`}
                         title={path.enabled ? 'Hide path' : 'Show path'}
                       >
@@ -649,7 +649,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onDeletePath(path.id); }}
-                        className="p-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-500 hover:text-red-400 hover:border-red-500/30 transition-all"
+                        className="p-1.5 rounded-[18px] bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-red-400 hover:border-red-500/30 transition-all"
                         title="Delete path"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -668,8 +668,8 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         {activeTab === 'presets' && (
           <div className="space-y-4">
             <div>
-              <label className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 font-bold">Vector Shape Generators</label>
-              <p className="text-[11px] text-zinc-500">Generate mathematical Bezier curves with editable anchors & corner radii.</p>
+              <label className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-mid-gray)] font-bold">Vector Shape Generators</label>
+              <p className="text-[11px] text-[var(--color-mid-gray)]">Generate mathematical Bezier curves with editable anchors & corner radii.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5">
@@ -684,13 +684,13 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 <button
                   key={preset.id}
                   onClick={() => onAddPresetPath(preset.id as any)}
-                  className="p-3.5 rounded-xl bg-[#141417] border border-white/5 hover:border-[#00F2FF]/40 hover:bg-zinc-900 text-left transition-all group flex items-center justify-between"
+                  className="p-3.5 rounded-[24px] bg-[var(--color-paper)] border border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:bg-[var(--color-surface-alt)] text-left transition-all group flex items-center justify-between"
                 >
                   <div>
-                    <div className="text-xs font-semibold text-white group-hover:text-[#00F2FF] transition-colors">{preset.name}</div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">{preset.desc}</div>
+                    <div className="text-xs font-semibold text-[var(--color-ink)] group-hover:text-[var(--color-ink)] transition-colors">{preset.name}</div>
+                    <div className="text-[10px] text-[var(--color-mid-gray)] mt-0.5">{preset.desc}</div>
                   </div>
-                  <Plus className="w-4 h-4 text-zinc-500 group-hover:text-[#00F2FF] group-hover:scale-110 transition-all" />
+                  <Plus className="w-4 h-4 text-[var(--color-mid-gray)] group-hover:text-[var(--color-ink)] group-hover:scale-110 transition-all" />
                 </button>
               ))}
             </div>
@@ -703,16 +703,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <div>
-              <label className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 font-bold">Artboard & Environment</label>
-              <p className="text-[11px] text-zinc-500">Configure global canvas settings, pencil curve smoothness, and grid.</p>
+              <label className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-mid-gray)] font-bold">Artboard & Environment</label>
+              <p className="text-[11px] text-[var(--color-mid-gray)]">Configure global canvas settings, pencil curve smoothness, and grid.</p>
             </div>
 
             <div className="space-y-4">
               {/* Pencil Smoothness Tolerance */}
-              <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-2">
+              <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-300 font-medium">Pencil Smoothing (N)</span>
-                  <span className="text-[#00F2FF] font-mono">{settings.pencilSmoothness || 6}px</span>
+                  <span className="text-[var(--color-mid-gray)] font-medium">Pencil Smoothing (N)</span>
+                  <span className="text-[var(--color-ink)] font-mono">{settings.pencilSmoothness || 6}px</span>
                 </div>
                 <input
                   type="range"
@@ -721,16 +721,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                   step="1"
                   value={settings.pencilSmoothness || 6}
                   onChange={(e) => onUpdateSettings({ pencilSmoothness: parseFloat(e.target.value) })}
-                  className="w-full accent-[#00F2FF] bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                  className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                 />
-                <p className="text-[10px] text-zinc-500">Higher values reduce jitter and create smoother cubic Bezier splines.</p>
+                <p className="text-[10px] text-[var(--color-mid-gray)]">Higher values reduce jitter and create smoother cubic Bezier splines.</p>
               </div>
 
               {/* Global Animation Speed */}
-              <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-2">
+              <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-300 font-medium">Global Speed Multiplier</span>
-                  <span className="text-[#00F2FF] font-mono">{settings.globalSpeed}x</span>
+                  <span className="text-[var(--color-mid-gray)] font-medium">Global Speed Multiplier</span>
+                  <span className="text-[var(--color-ink)] font-mono">{settings.globalSpeed}x</span>
                 </div>
                 <input
                   type="range"
@@ -739,18 +739,18 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                   step="0.1"
                   value={settings.globalSpeed}
                   onChange={(e) => onUpdateSettings({ globalSpeed: parseFloat(e.target.value) })}
-                  className="w-full accent-[#00F2FF] bg-zinc-800 h-1.5 rounded-lg cursor-pointer"
+                  className="w-full accent-[var(--color-ink)] bg-[var(--color-surface-alt)] h-1.5 rounded-[18px] cursor-pointer"
                 />
               </div>
 
               {/* Background Color & Grid */}
-              <div className="bg-[#141417] border border-white/10 rounded-xl p-3.5 space-y-3">
+              <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-3.5 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-300 font-medium">Show Canvas Grid</span>
+                  <span className="text-xs text-[var(--color-mid-gray)] font-medium">Show Canvas Grid</span>
                   <button
                     onClick={() => onUpdateSettings({ showGrid: !settings.showGrid })}
                     className={`w-10 h-5.5 rounded-full transition-colors relative p-0.5 ${
-                      settings.showGrid ? 'bg-[#00F2FF]' : 'bg-zinc-800'
+                      settings.showGrid ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-surface-alt)]'
                     }`}
                   >
                     <div className={`w-4.5 h-4.5 rounded-full bg-black transition-transform ${

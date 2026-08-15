@@ -3,52 +3,52 @@ import { GradientPreset, DashPattern } from '../types';
 export const GRADIENT_PRESETS: GradientPreset[] = [
   {
     id: 'cyberpunk',
-    name: 'Cyberpunk Neon',
-    background: 'linear-gradient(135deg, #00F2FF 0%, #7000FF 50%, #FF007F 100%)',
+    name: 'Ink Blueprint',
+    background: 'linear-gradient(135deg, #0a0a0a 0%, #171717 50%, #737373 100%)',
     stops: [
-      { offset: '0%', color: '#00F2FF' },
-      { offset: '50%', color: '#7000FF' },
-      { offset: '100%', color: '#FF007F' }
+      { offset: '0%', color: '#0a0a0a' },
+      { offset: '50%', color: '#171717' },
+      { offset: '100%', color: '#737373' }
     ]
   },
   {
     id: 'emerald',
-    name: 'Matrix Emerald',
-    background: 'linear-gradient(135deg, #10B981 0%, #059669 50%, #34D399 100%)',
+    name: 'Mid Gray',
+    background: 'linear-gradient(135deg, #737373 0%, #a3a3a3 50%, #d4d4d4 100%)',
     stops: [
-      { offset: '0%', color: '#10B981' },
-      { offset: '50%', color: '#059669' },
-      { offset: '100%', color: '#34D399' }
+      { offset: '0%', color: '#737373' },
+      { offset: '50%', color: '#a3a3a3' },
+      { offset: '100%', color: '#d4d4d4' }
     ]
   },
   {
     id: 'sunset',
-    name: 'Solar Flare',
-    background: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 50%, #EC4899 100%)',
+    name: 'Subtle Silver',
+    background: 'linear-gradient(135deg, #a3a3a3 0%, #d4d4d4 50%, #e5e5e5 100%)',
     stops: [
-      { offset: '0%', color: '#F59E0B' },
-      { offset: '50%', color: '#EF4444' },
-      { offset: '100%', color: '#EC4899' }
+      { offset: '0%', color: '#a3a3a3' },
+      { offset: '50%', color: '#d4d4d4' },
+      { offset: '100%', color: '#e5e5e5' }
     ]
   },
   {
     id: 'electric',
-    name: 'Electric Cobalt',
-    background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 50%, #60A5FA 100%)',
+    name: 'Graphite',
+    background: 'linear-gradient(135deg, #404040 0%, #525252 50%, #737373 100%)',
     stops: [
-      { offset: '0%', color: '#3B82F6' },
-      { offset: '50%', color: '#1D4ED8' },
-      { offset: '100%', color: '#60A5FA' }
+      { offset: '0%', color: '#404040' },
+      { offset: '50%', color: '#525252' },
+      { offset: '100%', color: '#737373' }
     ]
   },
   {
     id: 'monochrome',
-    name: 'Hyper White',
-    background: 'linear-gradient(135deg, #FFFFFF 0%, #A1A1AA 50%, #52525B 100%)',
+    name: 'Hairline Accent',
+    background: 'linear-gradient(135deg, #d4d4d4 0%, #e5e5e5 50%, #fafafa 100%)',
     stops: [
-      { offset: '0%', color: '#FFFFFF' },
-      { offset: '50%', color: '#A1A1AA' },
-      { offset: '100%', color: '#52525B' }
+      { offset: '0%', color: '#d4d4d4' },
+      { offset: '50%', color: '#e5e5e5' },
+      { offset: '100%', color: '#fafafa' }
     ]
   }
 ];

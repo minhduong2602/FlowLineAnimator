@@ -30,6 +30,7 @@ interface ArtboardCanvasProps {
   onUpdatePath: (id: string, updates: Partial<DrawingPath>) => void;
   onDeletePath: (id: string) => void;
   onClearPaths: () => void;
+  onCommitHistory?: () => void;
   activeTool: DrawTool;
   setActiveTool: (tool: DrawTool) => void;
   settings: ArtboardSettings;
@@ -51,6 +52,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   onUpdatePath,
   onDeletePath,
   onClearPaths,
+  onCommitHistory,
   activeTool,
   setActiveTool,
   settings,
@@ -75,6 +77,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   // Continuous animation flow offsets
   const [dashOffsets, setDashOffsets] = useState<Record<string, number>>({});
   const animFrameRef = useRef<number | null>(null);
+
+  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<Point | null>(null);
 
   const selectedPath = paths.find(p => p.id === selectedPathId);
 
@@ -116,8 +122,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         // If an anchor is selected in direct-select mode, delete it
         if (selectedPathId && selectedPath && selectedAnchorIndex !== null && selectedPath.anchors.length > 2) {
           e.preventDefault();
+          e.stopImmediatePropagation();
           const updatedAnchors = selectedPath.anchors.filter((_, idx) => idx !== selectedAnchorIndex);
           onUpdatePath(selectedPathId, { anchors: updatedAnchors });
+          onCommitHistory?.();
           setSelectedAnchorIndex(null);
         }
       } else if (e.key === 'Escape' || e.key === 'Enter') {
@@ -139,13 +147,13 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPathId, selectedPath, selectedAnchorIndex, penAnchors, activeTool]);
 
-  const getCanvasCoords = (e: React.MouseEvent<SVGSVGElement>): Point => {
+  const getCanvasCoords = (e: React.MouseEvent<SVGSVGElement> | React.MouseEvent<SVGElement>, applySnap: boolean = true): Point => {
     if (!svgRef.current) return { x: e.clientX, y: e.clientY };
     const rect = svgRef.current.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
+    let x = e.clientX - rect.left - pan.x;
+    let y = e.clientY - rect.top - pan.y;
 
-    if (settings.snapToGrid) {
+    if (applySnap && settings.snapToGrid) {
       const grid = settings.gridSize || 20;
       x = Math.round(x / grid) * grid;
       y = Math.round(y / grid) * grid;
@@ -221,6 +229,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     };
 
     onUpdatePath(selectedPathId, { anchors: updated });
+    onCommitHistory?.();
   };
 
   // Delete selected anchor
@@ -232,6 +241,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     }
     const updated = selectedPath.anchors.filter((_, idx) => idx !== selectedAnchorIndex);
     onUpdatePath(selectedPathId, { anchors: updated });
+    onCommitHistory?.();
     setSelectedAnchorIndex(null);
   };
 
@@ -265,12 +275,20 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     const updated = [...selectedPath.anchors];
     updated.splice(bestIndex, 0, newAnchor);
     onUpdatePath(selectedPathId, { anchors: updated });
+    onCommitHistory?.();
     setSelectedAnchorIndex(bestIndex);
     setActiveTool('direct-select');
   };
 
   // MOUSE DOWN HANDLER
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     const pos = getCanvasCoords(e);
 
     // 1. PENCIL TOOL (Freehand Smooth Drawing)
@@ -324,6 +342,14 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
   // MOUSE MOVE HANDLER
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isPanning && panStart) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      setPanStart({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     const pos = getCanvasCoords(e);
     setCurrentCursorPos(pos);
 
@@ -365,8 +391,27 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       return;
     }
 
-    // Direct Selection / Dragging Anchor or Handles
+    // Direct Selection / Dragging Anchor or Handles or Whole Path
     if (dragTarget && selectedPathId && selectedPath) {
+      if (dragTarget.type === 'wholePath' && dragStartPoint) {
+        const posNoSnap = getCanvasCoords(e, false);
+        const dx = posNoSnap.x - dragStartPoint.x;
+        const dy = posNoSnap.y - dragStartPoint.y;
+        
+        if (dx !== 0 || dy !== 0) {
+          const updated = selectedPath.anchors.map(anchor => ({
+            ...anchor,
+            point: { x: anchor.point.x + dx, y: anchor.point.y + dy },
+            handleIn: anchor.handleIn ? { x: anchor.handleIn.x + dx, y: anchor.handleIn.y + dy } : null,
+            handleOut: anchor.handleOut ? { x: anchor.handleOut.x + dx, y: anchor.handleOut.y + dy } : null
+          }));
+
+          onUpdatePath(selectedPathId, { anchors: updated });
+          setDragStartPoint(posNoSnap);
+        }
+        return;
+      }
+
       const updated = [...selectedPath.anchors];
       const anchor = updated[dragTarget.index];
       if (!anchor) return;
@@ -423,9 +468,18 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
   // MOUSE UP HANDLER
   const handleMouseUp = () => {
+    if (isPanning) {
+      setIsPanning(false);
+      setPanStart(null);
+      return;
+    }
+
+    let committed = false;
     if (dragTarget) {
       setDragTarget(null);
       setDragStartPoint(null);
+      onCommitHistory?.();
+      committed = true;
     }
 
     if (isDraggingPenHandle) {
@@ -530,16 +584,16 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   };
 
   return (
-    <div className="relative flex-1 bg-[#050505] overflow-hidden flex flex-col select-none">
+    <div className="relative flex-1 bg-[var(--color-canvas)] overflow-hidden flex flex-col select-none">
       {/* Floating Illustrator-Style Toolbox */}
-      <div className="absolute top-4 left-4 z-30 flex items-center gap-1.5 p-1.5 bg-zinc-950/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl">
+      <div className="absolute top-4 left-4 z-30 flex items-center gap-1.5 p-1.5 bg-[var(--color-paper)]/90 backdrop-blur-md border border-[var(--color-hairline)] rounded-[24px] shadow-2xl">
         {/* Direct Selection / Anchor Edit Tool (A) */}
         <button
           onClick={() => setActiveTool('direct-select')}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-[24px] text-xs font-semibold transition-all ${
             activeTool === 'direct-select'
-              ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-lg shadow-[#00F2FF]/10' 
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Direct Selection / Anchor Point Editor (A)"
         >
@@ -553,10 +607,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             setActiveTool('pen');
             setPenAnchors([]);
           }}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-[24px] text-xs font-semibold transition-all ${
             activeTool === 'pen' || activeTool === 'curve'
-              ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-lg shadow-[#00F2FF]/10' 
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Pen / Bezier Curve Tool (P) - Click & Drag for Handles"
         >
@@ -567,10 +621,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         {/* Smooth Pencil (N) */}
         <button
           onClick={() => setActiveTool('pencil')}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-[24px] text-xs font-semibold transition-all ${
             activeTool === 'pencil' || activeTool === 'freehand'
-              ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-lg shadow-[#00F2FF]/10' 
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Smooth Pencil (N) - Auto-smoothed curves"
         >
@@ -581,10 +635,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         {/* Line Tool (L) */}
         <button
           onClick={() => setActiveTool('line')}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-[24px] text-xs font-semibold transition-all ${
             activeTool === 'line'
-              ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40 shadow-lg shadow-[#00F2FF]/10' 
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] ' 
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Straight Line (L)"
         >
@@ -592,15 +646,15 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           <span className="hidden sm:inline">Line</span>
         </button>
 
-        <div className="w-[1px] h-6 bg-white/10 mx-1" />
+        <div className="w-[1px] h-6 bg-[var(--color-hairline)] mx-1" />
 
         {/* Add Anchor Point Tool */}
         <button
           onClick={() => setActiveTool('add-anchor')}
-          className={`p-2 rounded-xl transition-all ${
+          className={`p-2 rounded-[24px] transition-all ${
             activeTool === 'add-anchor'
-              ? 'bg-[#00F2FF]/20 text-[#00F2FF] border border-[#00F2FF]/40'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)]'
+              : 'text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)]'
           }`}
           title="Add Anchor Point to Curve (+)"
         >
@@ -610,7 +664,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         {/* Clear Paths */}
         <button
           onClick={onClearPaths}
-          className="p-2 rounded-xl text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          className="p-2 rounded-[24px] text-[var(--color-mid-gray)] hover:text-red-400 hover:bg-red-500/10 transition-all"
           title="Clear Artboard"
         >
           <Trash2 className="w-4 h-4" />
@@ -619,26 +673,26 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
       {/* Floating Active Pen Control Bar (When creating a curve with Pen Tool) */}
       {penAnchors.length > 0 && (
-        <div className="absolute top-20 left-4 z-30 flex items-center gap-2 p-2 bg-zinc-900/90 backdrop-blur-md border border-[#00F2FF]/30 rounded-xl shadow-xl animate-fade-in">
-          <div className="text-xs font-mono text-[#00F2FF] font-semibold px-2">
+        <div className="absolute top-20 left-4 z-30 flex items-center gap-2 p-2 bg-[var(--color-surface-alt)]/90 backdrop-blur-md border border-[var(--color-ink)] rounded-[24px] [box-shadow:var(--shadow-subtle)] animate-fade-in">
+          <div className="text-xs font-mono text-[var(--color-ink)] font-semibold px-2">
             Pen Active: {penAnchors.length} Anchors
           </div>
           <button
             onClick={() => finishPenPath(false)}
-            className="px-3 py-1.5 rounded-lg bg-[#00F2FF] text-black text-xs font-bold hover:bg-white transition-all flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-[18px] bg-[var(--color-ink)] text-slate-100 text-xs font-bold hover:bg-white transition-all flex items-center gap-1.5"
           >
             <Check className="w-3.5 h-3.5" />
             Finish Path
           </button>
           <button
             onClick={() => finishPenPath(true)}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 transition-all flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-[18px] bg-teal-200 text-[var(--color-ink)] text-xs font-bold hover:bg-teal-500 transition-all flex items-center gap-1.5"
           >
             Close Loop
           </button>
           <button
             onClick={() => setPenAnchors([])}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="p-1.5 rounded-[18px] text-[var(--color-mid-gray)] hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Cancel"
           >
             <X className="w-4 h-4" />
@@ -648,17 +702,17 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
       {/* Floating Selected Anchor Point Inspector (Illustrator Style) */}
       {selectedPath && selectedAnchorIndex !== null && selectedPath.anchors[selectedAnchorIndex] && (
-        <div className="absolute top-4 right-4 z-30 flex items-center gap-2 p-2 bg-zinc-950/90 backdrop-blur-md border border-white/15 rounded-2xl shadow-2xl">
-          <div className="px-2.5 text-[11px] font-mono text-zinc-300">
+        <div className="absolute top-4 right-4 z-30 flex items-center gap-2 p-2 bg-zinc-950/90 backdrop-blur-md border border-white/15 rounded-[24px] shadow-2xl">
+          <div className="px-2.5 text-[11px] font-mono text-[var(--color-mid-gray)]">
             Anchor #{selectedAnchorIndex + 1} ({Math.round(selectedPath.anchors[selectedAnchorIndex].point.x)}, {Math.round(selectedPath.anchors[selectedAnchorIndex].point.y)})
           </div>
           
           <button
             onClick={handleToggleAnchorSmooth}
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-[24px] text-xs font-medium border transition-all flex items-center gap-1.5 ${
               !selectedPath.anchors[selectedAnchorIndex].isCorner
-                ? 'bg-[#00F2FF]/20 border-[#00F2FF]/40 text-[#00F2FF]'
-                : 'bg-zinc-900 border-white/10 text-zinc-400 hover:text-white'
+                ? 'bg-[var(--color-canvas)] border-[var(--color-ink)] text-[var(--color-ink)]'
+                : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
             }`}
             title="Toggle Smooth Tangent / Sharp Corner"
           >
@@ -668,7 +722,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
           <button
             onClick={handleDeleteSelectedAnchor}
-            className="p-2 rounded-xl bg-zinc-900 border border-white/10 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="p-2 rounded-[24px] bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Delete this anchor point (Del/Backspace)"
           >
             <MinusCircle className="w-4 h-4" />
@@ -716,32 +770,39 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         {settings.showGrid && (
           <g className="opacity-25 pointer-events-none">
             <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+              <pattern id="grid" x={pan.x} y={pan.y} width={settings.gridSize || 40} height={settings.gridSize || 40} patternUnits="userSpaceOnUse">
+                <path d={`M ${settings.gridSize || 40} 0 L 0 0 0 ${settings.gridSize || 40}`} fill="none" stroke="var(--color-ink)" opacity="0.1" strokeWidth="1" />
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
           </g>
         )}
 
-        {/* Render Saved Vector Paths */}
-        {paths.map(path => {
-          if (!path.enabled || !path.anchors || path.anchors.length === 0) return null;
-          const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0);
-          const dashArray = getDashArray(path);
-          const offset = dashOffsets[path.id] || 0;
-          const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
-          const isSelected = selectedPathId === path.id;
+        <g transform={`translate(${pan.x}, ${pan.y})`}>
+          {/* Render Saved Vector Paths */}
+          {paths.map(path => {
+            if (!path.enabled || !path.anchors || path.anchors.length === 0) return null;
+            const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0);
+            const dashArray = getDashArray(path);
+            const offset = dashOffsets[path.id] || 0;
+            const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
+            const isSelected = selectedPathId === path.id;
 
-          return (
-            <g
-              key={path.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectPath(path.id);
-              }}
-              className="cursor-pointer"
-            >
+            return (
+              <g
+                key={path.id}
+                onMouseDown={(e) => {
+                  if (e.button === 1 || (e.button === 0 && e.altKey)) return;
+                  e.stopPropagation();
+                  onSelectPath(path.id);
+                  
+                  if (activeTool === 'select' || activeTool === 'direct-select') {
+                    setDragTarget({ type: 'wholePath' });
+                    setDragStartPoint(getCanvasCoords(e, false));
+                  }
+                }}
+                className="cursor-pointer"
+              >
               {/* Glow bloom layer */}
               {path.showGlow && (
                 <path
@@ -776,7 +837,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 <path
                   d={d}
                   fill="none"
-                  stroke="#FFFFFF"
+                  stroke="var(--color-ink)"
                   strokeWidth={1.5}
                   strokeLinecap={path.lineCap || 'round'}
                   strokeLinejoin={path.lineJoin || 'round'}
@@ -807,7 +868,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                             y1={anchor.point.y}
                             x2={anchor.handleIn.x}
                             y2={anchor.handleIn.y}
-                            stroke="#00F2FF"
+                            stroke="var(--color-ink)"
                             strokeWidth={1.5}
                             strokeDasharray="2,2"
                             opacity={0.8}
@@ -816,10 +877,11 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                             cx={anchor.handleIn.x}
                             cy={anchor.handleIn.y}
                             r={5}
-                            fill="#00F2FF"
-                            stroke="#000"
+                            fill="var(--color-ink)"
+                            stroke="var(--color-canvas)"
                             strokeWidth={1.5}
                             className="cursor-pointer hover:scale-150 transition-transform"
+                            style={{ transformOrigin: `${anchor.handleIn.x}px ${anchor.handleIn.y}px` }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
                               setSelectedAnchorIndex(idx);
@@ -837,7 +899,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                             y1={anchor.point.y}
                             x2={anchor.handleOut.x}
                             y2={anchor.handleOut.y}
-                            stroke="#00F2FF"
+                            stroke="var(--color-ink)"
                             strokeWidth={1.5}
                             strokeDasharray="2,2"
                             opacity={0.8}
@@ -846,10 +908,11 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                             cx={anchor.handleOut.x}
                             cy={anchor.handleOut.y}
                             r={5}
-                            fill="#00F2FF"
-                            stroke="#000"
+                            fill="var(--color-ink)"
+                            stroke="var(--color-canvas)"
                             strokeWidth={1.5}
                             className="cursor-pointer hover:scale-150 transition-transform"
+                            style={{ transformOrigin: `${anchor.handleOut.x}px ${anchor.handleOut.y}px` }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
                               setSelectedAnchorIndex(idx);
@@ -871,6 +934,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                     stroke="#000000"
                     strokeWidth={2}
                     className="cursor-move hover:scale-125 transition-transform"
+                    style={{ transformOrigin: `${anchor.point.x}px ${anchor.point.y}px` }}
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       setSelectedAnchorIndex(idx);
@@ -889,7 +953,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             <path
               d={getPenPreviewPath()}
               fill="none"
-              stroke="#00F2FF"
+              stroke="var(--color-ink)"
               strokeWidth={3}
               strokeDasharray="6,4"
               className="animate-pulse"
@@ -901,8 +965,8 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                   y={anc.point.y - 5}
                   width={10}
                   height={10}
-                  fill="#00F2FF"
-                  stroke="#000"
+                  fill="var(--color-ink)"
+                  stroke="var(--color-canvas)"
                   strokeWidth={2}
                 />
                 {anc.handleOut && (
@@ -911,7 +975,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                     cy={anc.handleOut.y}
                     r={4}
                     fill="#FF007F"
-                    stroke="#000"
+                    stroke="var(--color-canvas)"
                   />
                 )}
               </g>
@@ -919,39 +983,40 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           </g>
         )}
 
-        {/* Live Pencil / Freehand / Line Stroke Preview */}
-        {isDrawing && (activeTool === 'pencil' || activeTool === 'freehand' || activeTool === 'line') && rawPencilPoints.length > 1 && (
-          <path
-            d={
-              activeTool === 'line' 
-                ? `M ${rawPencilPoints[0].x} ${rawPencilPoints[0].y} L ${rawPencilPoints[1].x} ${rawPencilPoints[1].y}`
-                : anchorsToPathString(fitSmoothBezierAnchors(rawPencilPoints, settings.pencilSmoothness || 6))
-            }
-            fill="none"
-            stroke="#00F2FF"
-            strokeWidth={3.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="8,4"
-            className="animate-pulse"
-          />
-        )}
+          {/* Live Pencil / Freehand / Line Stroke Preview */}
+          {isDrawing && (activeTool === 'pencil' || activeTool === 'freehand' || activeTool === 'line') && rawPencilPoints.length > 1 && (
+            <path
+              d={
+                activeTool === 'line' 
+                  ? `M ${rawPencilPoints[0].x} ${rawPencilPoints[0].y} L ${rawPencilPoints[1].x} ${rawPencilPoints[1].y}`
+                  : anchorsToPathString(fitSmoothBezierAnchors(rawPencilPoints, settings.pencilSmoothness || 6))
+              }
+              fill="none"
+              stroke="var(--color-ink)"
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="8,4"
+              className="animate-pulse"
+            />
+          )}
+        </g>
       </svg>
 
       {/* Artboard Status / Hotkey Footer */}
-      <div className="absolute bottom-4 left-4 right-4 pointer-events-none flex justify-between items-center text-[10px] uppercase tracking-widest text-zinc-500 font-mono">
-        <div className="bg-zinc-950/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 pointer-events-auto flex items-center gap-2">
+      <div className="absolute bottom-4 left-4 right-4 pointer-events-none flex justify-between items-center text-[10px] uppercase tracking-widest text-[var(--color-mid-gray)] font-mono">
+        <div className="bg-[var(--color-paper)]/90 backdrop-blur-md px-3 py-1.5 rounded-[18px] border border-[var(--color-hairline)] pointer-events-auto flex items-center gap-2 [box-shadow:var(--shadow-subtle)]">
           <span>Active Tool:</span>
-          <span className="text-[#00F2FF] font-bold">{activeTool}</span>
-          <span className="text-zinc-600">•</span>
+          <span className="text-[var(--color-ink)] font-bold">{activeTool}</span>
+          <span className="text-[var(--color-mid-gray)]">•</span>
           <span>{paths.length} Layers</span>
-          {selectedPath && <span className="text-zinc-300">({selectedPath.name} • {selectedPath.anchors.length} Anchors)</span>}
+          {selectedPath && <span className="text-[var(--color-mid-gray)]">({selectedPath.name} • {selectedPath.anchors.length} Anchors)</span>}
         </div>
-        <div className="bg-zinc-950/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 pointer-events-auto hidden md:flex items-center gap-3 text-zinc-400">
-          <span><kbd className="text-[#00F2FF] bg-zinc-800 px-1 py-0.5 rounded">A</kbd> Direct Select</span>
-          <span><kbd className="text-[#00F2FF] bg-zinc-800 px-1 py-0.5 rounded">P</kbd> Pen Tool</span>
-          <span><kbd className="text-[#00F2FF] bg-zinc-800 px-1 py-0.5 rounded">N</kbd> Smooth Pencil</span>
-          <span><kbd className="text-[#00F2FF] bg-zinc-800 px-1 py-0.5 rounded">Del</kbd> Remove Anchor</span>
+        <div className="bg-[var(--color-paper)]/90 backdrop-blur-md px-3 py-1.5 rounded-[18px] border border-[var(--color-hairline)] pointer-events-auto hidden md:flex items-center gap-3 text-[var(--color-mid-gray)] [box-shadow:var(--shadow-subtle)]">
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">A</kbd> Direct Select</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">P</kbd> Pen Tool</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">N</kbd> Smooth Pencil</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Del</kbd> Remove Anchor</span>
         </div>
       </div>
     </div>

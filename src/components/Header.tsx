@@ -7,6 +7,8 @@ import {
   Download, 
   Maximize2, 
   Minimize2, 
+  Undo2,
+  Redo2,
   Sliders
 } from 'lucide-react';
 
@@ -20,6 +22,10 @@ interface HeaderProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   fps: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,46 +37,78 @@ export const Header: React.FC<HeaderProps> = ({
   sidebarOpen,
   isFullscreen,
   onToggleFullscreen,
-  fps
+  fps,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo
 }) => {
   return (
-    <header className="h-16 border-b border-white/5 bg-black/40 backdrop-blur-md px-8 flex items-center justify-between z-30 sticky top-0">
+    <header className="h-[64px] border-b border-[var(--color-hairline)] bg-[var(--color-paper)] px-8 flex items-center justify-between z-30 shrink-0">
       <div className="flex items-center gap-4">
-        <div className="w-8 h-8 bg-gradient-to-tr from-[#00F2FF] to-[#7000FF] rounded-lg p-0.5 shadow-lg shadow-[#00F2FF]/20 flex items-center justify-center">
-          <div className="w-full h-full bg-[#050505] rounded-[6px] flex items-center justify-center">
-            <Activity className="w-4 h-4 text-[#00F2FF] animate-pulse" />
-          </div>
+        <div className="w-8 h-8 bg-[var(--color-ink)] rounded-[6px] flex items-center justify-center shadow-sm">
+          <Activity className="w-4 h-4 text-[var(--color-paper)]" />
         </div>
-        <h1 className="text-xl font-bold tracking-tighter text-white uppercase italic">
-          VectorFlow <span className="text-xs font-normal not-italic text-zinc-500 ml-2 font-mono">Artboard v3.0</span>
+        <h1 className="text-[18px] font-semibold tracking-[-0.025em] text-[var(--color-ink)] flex items-baseline gap-2">
+          VectorFlow
+          <span className="text-[12px] font-normal tracking-[0.05em] text-[var(--color-mid-gray)] uppercase">v3.0</span>
         </h1>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Undo/Redo Buttons */}
+        <div className="flex items-center gap-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded-[18px] p-1 mr-2">
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className={`p-1.5 rounded-[14px] transition-all ${
+              canUndo 
+                ? 'text-[var(--color-ink)] hover:bg-[var(--color-canvas)]' 
+                : 'text-[var(--color-mid-gray)] opacity-50 cursor-not-allowed'
+            }`}
+            title="Undo"
+          >
+            <Undo2 className="w-4 h-4" />
+          </button>
+          <div className="w-[1px] h-4 bg-[var(--color-hairline)]"></div>
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            className={`p-1.5 rounded-[14px] transition-all ${
+              canRedo 
+                ? 'text-[var(--color-ink)] hover:bg-[var(--color-canvas)]' 
+                : 'text-[var(--color-mid-gray)] opacity-50 cursor-not-allowed'
+            }`}
+            title="Redo"
+          >
+            <Redo2 className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* FPS Badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-lg bg-zinc-900 border border-white/5 text-xs font-mono text-zinc-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-[10px] uppercase tracking-widest text-zinc-400">Live Engine: {fps} FPS</span>
+        <div className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-[18px] bg-[var(--color-surface-alt)] border border-[var(--color-hairline)]">
+          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-[var(--color-ink)]' : 'bg-[var(--color-mid-gray)]'}`}></span>
+          <span className="text-[12px] font-medium text-[var(--color-ink)]">{fps} FPS</span>
         </div>
 
         {/* Play/Pause Button */}
         <button
           onClick={onTogglePlay}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-[18px] text-[14px] font-medium transition-all ${
             isPlaying 
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20' 
-              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'
+              ? 'bg-[var(--color-ink)] text-[var(--color-paper)]' 
+              : 'bg-[var(--color-surface-alt)] text-[var(--color-ink)] border border-[var(--color-hairline)]'
           }`}
           title={isPlaying ? 'Pause Simulation' : 'Start Simulation'}
         >
           {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          <span className="hidden md:inline uppercase tracking-widest text-[10px]">{isPlaying ? 'Pause' : 'Resume'}</span>
+          <span className="hidden md:inline">{isPlaying ? 'Pause' : 'Resume'}</span>
         </button>
 
         {/* Reset Button */}
         <button
           onClick={onReset}
-          className="p-2 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white hover:border-[#00F2FF] transition-all"
+          className="p-2 rounded-[18px] bg-transparent border border-[var(--color-hairline)] text-[var(--color-ink)] hover:bg-[var(--color-canvas)] transition-all"
           title="Reset Data"
         >
           <RotateCcw className="w-4 h-4" />
@@ -79,16 +117,16 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Export / Record Button */}
         <button
           onClick={onOpenExport}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-[#00F2FF] transition-all transform active:scale-95 shadow-lg shadow-white/5 uppercase tracking-tighter"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-[18px] bg-transparent border border-[var(--color-hairline)] text-[var(--color-ink)] text-[14px] font-medium hover:bg-[var(--color-canvas)] transition-all"
         >
           <Download className="w-4 h-4" />
-          <span className="hidden sm:inline">Export Studio</span>
+          <span className="hidden sm:inline">Export</span>
         </button>
 
         {/* Fullscreen Toggle */}
         <button
           onClick={onToggleFullscreen}
-          className="hidden sm:flex p-2 rounded-lg bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white transition-all"
+          className="hidden sm:flex p-2 rounded-[18px] bg-transparent border border-[var(--color-hairline)] text-[var(--color-ink)] hover:bg-[var(--color-canvas)] transition-all"
           title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -97,10 +135,10 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Sidebar Toggle */}
         <button
           onClick={onToggleSidebar}
-          className={`p-2 rounded-lg border transition-all ${
+          className={`p-2 rounded-[18px] border transition-all ${
             sidebarOpen 
-              ? 'bg-[#00F2FF]/10 border-[#00F2FF]/30 text-[#00F2FF]' 
-              : 'bg-zinc-900 border-white/10 text-zinc-400 hover:text-white'
+              ? 'bg-[var(--color-ink)] border-[var(--color-ink)] text-[var(--color-paper)]' 
+              : 'bg-transparent border-[var(--color-hairline)] text-[var(--color-ink)] hover:bg-[var(--color-canvas)]'
           }`}
           title="Toggle Control Panel"
         >

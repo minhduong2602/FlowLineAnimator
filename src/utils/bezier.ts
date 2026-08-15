@@ -638,7 +638,7 @@ export function renderArtboardToCanvas(
     // Grid
     if (showGrid) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.lineWidth = 1;
       const step = 40;
       for (let x = 0; x < w; x += step) {
