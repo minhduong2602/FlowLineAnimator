@@ -232,7 +232,66 @@ export default function App() {
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+
+    const handlePaste = (e: ClipboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if (!e.clipboardData) return;
+      const items = e.clipboardData.items;
+      
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (event.target && typeof event.target.result === 'string') {
+                const img = new Image();
+                img.onload = () => {
+                  const newLayer: DrawingPath = {
+                    id: `image-${Date.now()}`,
+                    name: `Pasted Image`,
+                    type: 'image',
+                    imageUrl: event.target!.result as string,
+                    imageWidth: img.width,
+                    imageHeight: img.height,
+                    x: 100,
+                    y: 100,
+                    anchors: [],
+                    strokeWidth: 0,
+                    color: '#000000',
+                    gradientId: '',
+                    dashPreset: 'solid',
+                    customDashLength: 0,
+                    customGapLength: 0,
+                    flowSpeed: 0,
+                    flowDirection: 'forward',
+                    showGlow: false,
+                    opacity: 1,
+                    enabled: true,
+                    pathType: 'image'
+                  };
+                  updatePathsAndCommit(prev => [...prev, newLayer]);
+                  setSelectedPathId(newLayer.id);
+                };
+                img.src = event.target.result;
+              }
+            };
+            reader.readAsDataURL(blob);
+          }
+          break; // Only paste one image at a time
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('paste', handlePaste);
+    };
   }, [handleUndo, handleRedo, handleDeletePath, selectedPathId]);
 
   const handleImportSVG = (svgData: string) => {

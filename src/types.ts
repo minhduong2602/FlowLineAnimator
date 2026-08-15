@@ -57,7 +57,13 @@ export interface DrawingPath {
   anchors: AnchorPoint[];
   points?: Point[];
   closed?: boolean;
-  pathType?: string;
+  pathType?: string; // or 'image' if we repurpose this
+  type?: 'vector' | 'image';
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  x?: number;
+  y?: number;
   strokeWidth: number;
   strokeAlign?: 'center' | 'inside' | 'outside';
   lineCap?: 'butt' | 'round' | 'square';

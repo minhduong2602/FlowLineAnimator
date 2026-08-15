@@ -118,7 +118,7 @@ export const SidebarControls = ({
             ) : (
               <div className="space-y-4">
                 
-                <CollapsibleSection id="layer-identity" title="Vector Path Layer" subtitle={selectedPath.anchors ? `${selectedPath.anchors.length} Anchors` : '0 Anchors'}>
+                <CollapsibleSection id="layer-identity" title={selectedPath.type === 'image' ? "Image Layer" : "Vector Path Layer"} subtitle={selectedPath.type === 'image' ? `${Math.round(selectedPath.imageWidth || 0)}x${Math.round(selectedPath.imageHeight || 0)}` : (selectedPath.anchors ? `${selectedPath.anchors.length} Anchors` : '0 Anchors')}>
                   <input
                     type="text"
                     value={selectedPath.name}

@@ -904,7 +904,45 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         <g transform={`translate(${pan.x}, ${pan.y})`}>
           {/* Render Saved Vector Paths */}
           {paths.map(path => {
-            if (!path.enabled || !path.anchors || path.anchors.length === 0) return null;
+            if (!path.enabled) return null;
+            if (path.type === 'image') {
+              const isSelected = selectedPathId === path.id;
+              return (
+                <g
+                  key={path.id}
+                  onMouseDown={(e) => {
+                    if (e.button === 1 || (e.button === 0 && e.altKey)) return;
+                    e.stopPropagation();
+                    onSelectPath(path.id);
+                    
+                    if (activeTool === 'select') {
+                      setDragTarget({ type: 'wholePath' });
+                      setDragStartPoint(getCanvasCoords(e, false));
+                    }
+                  }}
+                  className="cursor-pointer"
+                  transform={`translate(${path.x || 0}, ${path.y || 0})`}
+                >
+                  <image 
+                    href={path.imageUrl} 
+                    width={path.imageWidth || 100} 
+                    height={path.imageHeight || 100} 
+                    opacity={path.opacity ?? 1}
+                  />
+                  {isSelected && (
+                    <rect 
+                      width={path.imageWidth || 100} 
+                      height={path.imageHeight || 100} 
+                      fill="none" 
+                      stroke="#00F2FF" 
+                      strokeWidth={1 / zoom} 
+                    />
+                  )}
+                </g>
+              );
+            }
+
+            if (!path.anchors || path.anchors.length === 0) return null;
             const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
             const dashArray = getDashArray(path);
             const offset = dashOffsets[path.id] || 0;

@@ -19,6 +19,7 @@ interface HeaderProps {
   onReset: () => void;
   onOpenExport: () => void;
   onOpenImport: () => void;
+  onAddImage: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
   isFullscreen: boolean;
