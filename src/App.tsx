@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import gifshot from 'gifshot';
+import { encode } from 'modern-gif';
 import { 
   DrawingPath, 
   DrawTool, 
@@ -20,7 +20,8 @@ import { ImportSvgModal } from './components/ImportSvgModal';
 import { 
   createPresetAnchors, 
   renderArtboardToCanvas,
-  anchorsToPathString 
+  anchorsToPathString,
+  calculateBoundingBox
 } from './utils/bezier';
 import { extractPathsFromSvgString, parseSVGPathToAnchors } from './utils/svgImport';
 
@@ -383,15 +384,16 @@ export default function App() {
 
   // High-Resolution PNG Export with optional Transparency
   const handleExportPNG = (transparent: boolean = true) => {
-    const width = 1200;
-    const height = 800;
+    const bbox = calculateBoundingBox(paths);
+    const width = Math.max(bbox.width, 100);
+    const height = Math.max(bbox.height, 100);
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
 
     const offsets: Record<string, number> = {};
     paths.forEach(p => { offsets[p.id] = 0; });
-    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent);
+    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y });
 
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
@@ -409,6 +411,10 @@ export default function App() {
     // Remove temporary edit handles from exported SVG
     const handles = svgClone.querySelector('.illustrator-handles');
     if (handles) handles.remove();
+
+    // Adjust viewBox to the calculated bounding box
+    const bbox = calculateBoundingBox(paths);
+    svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${Math.max(bbox.width, 100)} ${Math.max(bbox.height, 100)}`);
 
     svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     const svgData = new XMLSerializer().serializeToString(svgClone);
@@ -430,55 +436,55 @@ export default function App() {
   };
 
   // Helper promise to create single GIF from a list of paths
-  const generateGifForPaths = (
+  const generateGifForPaths = async (
     targetPaths: DrawingPath[], 
     transparent: boolean, 
     filename: string
   ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const width = 720;
-      const height = 480;
-      const frameCount = 18;
-      const frames: string[] = [];
+    const bbox = calculateBoundingBox(targetPaths);
+    const width = Math.max(bbox.width, 100);
+    const height = Math.max(bbox.height, 100);
+    const frameCount = 18;
+    const frames: HTMLCanvasElement[] = [];
 
-      for (let f = 0; f < frameCount; f++) {
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+    for (let f = 0; f < frameCount; f++) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
 
-        const offsets: Record<string, number> = {};
-        targetPaths.forEach(p => {
-          const cycleDist = (p.customDashLength || 20) + (p.customGapLength || 10) + ((p.customDash2 || 0) + (p.customGap2 || 0));
-          const actualCycle = cycleDist > 0 ? cycleDist : 40;
-          const speed = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1);
-          const dir = p.flowDirection === 'reverse' ? 1 : -1;
-          offsets[p.id] = f * (actualCycle / frameCount) * speed * dir;
-        });
-
-        renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent);
-        frames.push(canvas.toDataURL('image/png'));
-      }
-
-      gifshot.createGIF({
-        images: frames,
-        interval: 0.07,
-        gifWidth: width,
-        gifHeight: height,
-        numWorkers: 2
-      }, (obj: any) => {
-        if (!obj.error) {
-          const url = obj.image;
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.click();
-          resolve();
-        } else {
-          console.error('GIF export error:', obj.error);
-          resolve(); // Resolve so batch export continues
-        }
+      const offsets: Record<string, number> = {};
+      targetPaths.forEach(p => {
+        const cycleDist = (p.customDashLength || 20) + (p.customGapLength || 10) + ((p.customDash2 || 0) + (p.customGap2 || 0));
+        const actualCycle = cycleDist > 0 ? cycleDist : 40;
+        const speed = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1);
+        const dir = p.flowDirection === 'reverse' ? 1 : -1;
+        offsets[p.id] = f * (actualCycle / frameCount) * speed * dir;
       });
-    });
+
+      renderArtboardToCanvas(canvas, targetPaths, offsets, settings.backgroundColor, false, transparent, { x: -bbox.x, y: -bbox.y });
+      frames.push(canvas);
+    }
+
+    try {
+      const buffer = await encode({
+        width,
+        height,
+        frames: frames.map(canvas => ({
+          data: canvas,
+          delay: 70, // ~14 fps
+          transparent
+        }))
+      });
+
+      const blob = new Blob([buffer], { type: 'image/gif' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    } catch (err) {
+      console.error('GIF export error:', err);
+    }
   };
 
   // Enhanced Animated GIF Export: Supports Transparent Background & Separate Layer Export

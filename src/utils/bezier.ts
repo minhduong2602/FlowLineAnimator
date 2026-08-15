@@ -657,6 +657,48 @@ export function drawPathToCanvas(
   ctx.restore();
 }
 
+export function calculateBoundingBox(paths: DrawingPath[]) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  let hasPoints = false;
+  let maxStroke = 0;
+
+  paths.forEach(path => {
+    if (!path.enabled) return;
+    path.anchors.forEach(a => {
+      hasPoints = true;
+      const pts = [a.point];
+      if (a.handleIn) pts.push(a.handleIn);
+      if (a.handleOut) pts.push(a.handleOut);
+      
+      pts.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      });
+    });
+    if (path.strokeWidth > maxStroke) maxStroke = path.strokeWidth;
+  });
+
+  if (!hasPoints) {
+    return { x: 0, y: 0, width: 800, height: 600 };
+  }
+
+  // Margin to prevent cut off (e.g. stroke width + glow spread + generous padding)
+  const margin = maxStroke * 6 + 40;
+  
+  return {
+    x: Math.floor(minX - margin),
+    y: Math.floor(minY - margin),
+    width: Math.ceil((maxX - minX) + (margin * 2)),
+    height: Math.ceil((maxY - minY) + (margin * 2))
+  };
+}
+
 /**
  * Render the full artboard onto a canvas element
  */
@@ -666,7 +708,8 @@ export function renderArtboardToCanvas(
   dashOffsets: Record<string, number>,
   backgroundColor = '#050505',
   showGrid = true,
-  transparent = false
+  transparent = false,
+  offset = { x: 0, y: 0 }
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -677,10 +720,13 @@ export function renderArtboardToCanvas(
   // Initialize the canvas alpha channel to truly transparent before any rendering
   ctx.clearRect(0, 0, w, h);
 
+  ctx.save();
+  ctx.translate(offset.x, offset.y);
+
   // Fill background if not transparent
   if (!transparent && backgroundColor !== 'transparent') {
     ctx.fillStyle = backgroundColor;
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(-offset.x, -offset.y, w, h);
 
     // Grid
     if (showGrid) {
@@ -688,16 +734,16 @@ export function renderArtboardToCanvas(
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
       ctx.lineWidth = 1;
       const step = 40;
-      for (let x = 0; x < w; x += step) {
+      for (let x = (-offset.x % step) - step; x < w - offset.x; x += step) {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
+        ctx.moveTo(x, -offset.y);
+        ctx.lineTo(x, h - offset.y);
         ctx.stroke();
       }
-      for (let y = 0; y < h; y += step) {
+      for (let y = (-offset.y % step) - step; y < h - offset.y; y += step) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
+        ctx.moveTo(-offset.x, y);
+        ctx.lineTo(w - offset.x, y);
         ctx.stroke();
       }
       ctx.restore();
@@ -707,8 +753,10 @@ export function renderArtboardToCanvas(
   // Paths
   paths.forEach(path => {
     if (path.enabled) {
-      const offset = dashOffsets[path.id] || 0;
-      drawPathToCanvas(ctx, path, offset, w, h);
+      const lineOffset = dashOffsets[path.id] || 0;
+      drawPathToCanvas(ctx, path, lineOffset, w, h);
     }
   });
+
+  ctx.restore();
 }
