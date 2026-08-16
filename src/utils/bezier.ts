@@ -8,6 +8,44 @@ import { svgPathProperties } from 'svg-path-properties';
 export const uid = (prefix = 'node'): string => `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
 
 /**
+ * Relative luminance (0-1) of a CSS hex color, 1 for unparseable values
+ */
+export const parseHexLuminance = (color: string): number => {
+  if (!color || color === 'transparent') return 1;
+  const hex = color.replace('#', '').trim();
+  const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+  if (full.length !== 6 || /[^0-9a-fA-F]/.test(full)) return 1;
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/**
+ * Decode every image referenced by the paths (layers + motion objects) so
+ * canvas exports can draw them synchronously from a cache.
+ */
+export async function preloadPathImages(paths: DrawingPath[]): Promise<Record<string, HTMLImageElement>> {
+  const urls = new Set<string>();
+  paths.forEach(p => {
+    if (p.type === 'image' && p.imageUrl) urls.add(p.imageUrl);
+  });
+  const motionIds = new Set(paths.filter(p => p.motionObjectId).map(p => p.motionObjectId!));
+  paths.forEach(p => {
+    if (motionIds.has(p.id) && p.type === 'image' && p.imageUrl) urls.add(p.imageUrl);
+  });
+
+  const cache: Record<string, HTMLImageElement> = {};
+  await Promise.all(Array.from(urls).map(url => new Promise<void>(resolve => {
+    const img = new Image();
+    img.onload = () => { cache[url] = img; resolve(); };
+    img.onerror = () => resolve();
+    img.src = url;
+  })));
+  return cache;
+}
+
+/**
  * Distance between two points
  */
 export const distance = (p1: Point, p2: Point): number => {
@@ -547,17 +585,21 @@ export function getBoundingBox(path: DrawingPath) {
   }
 
   let hasPoints = false;
+  // Anchors are stored in the path's local space; the artboard SVG renders each
+  // path inside translate(path.x, path.y), so the bbox must include that offset.
+  const ox = path.x || 0;
+  const oy = path.y || 0;
   path.anchors.forEach(a => {
     hasPoints = true;
     const pts = [a.point];
     if (a.handleIn) pts.push(a.handleIn);
     if (a.handleOut) pts.push(a.handleOut);
-    
+
     pts.forEach(p => {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
+      if (p.x + ox < minX) minX = p.x + ox;
+      if (p.y + oy < minY) minY = p.y + oy;
+      if (p.x + ox > maxX) maxX = p.x + ox;
+      if (p.y + oy > maxY) maxY = p.y + oy;
     });
   });
 
@@ -623,7 +665,9 @@ export function renderArtboardToCanvas(
   scale = 1,
   motionProgress: Record<string, number> = {},
   timeElapsed: number = 0,
-  globalSpeed: number = 1
+  globalSpeed: number = 1,
+  gridSize: number = 40,
+  imageCache: Record<string, CanvasImageSource> = {}
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -643,12 +687,13 @@ export function renderArtboardToCanvas(
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(-offset.x, -offset.y, w / scale, h / scale);
 
-    // Grid
+    // Grid — match the artboard's grid size, and stay visible on dark backgrounds
     if (showGrid) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+      const lum = parseHexLuminance(backgroundColor);
+      ctx.strokeStyle = lum < 0.5 ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)';
       ctx.lineWidth = 1;
-      const step = 40;
+      const step = gridSize || 40;
       for (let x = (-offset.x % step) - step; x < (w / scale) - offset.x; x += step) {
         ctx.beginPath();
         ctx.moveTo(x, -offset.y);
@@ -676,9 +721,10 @@ export function renderArtboardToCanvas(
         }
         
         try {
-          const img = new Image();
-          img.src = path.imageUrl;
-          ctx.drawImage(img, 0, 0, path.imageWidth || 100, path.imageHeight || 100);
+          const img = imageCache[path.imageUrl];
+          if (img) {
+            ctx.drawImage(img, 0, 0, path.imageWidth || 100, path.imageHeight || 100);
+          }
         } catch (e) {
           console.error('Failed to draw image', e);
         }
@@ -686,7 +732,12 @@ export function renderArtboardToCanvas(
         ctx.restore();
       } else {
         const lineOffset = dashOffsets[path.id] || 0;
+        // The artboard SVG renders each path inside translate(path.x, path.y);
+        // mirror that here or moved layers export at their pre-move position.
+        ctx.save();
+        ctx.translate(path.x || 0, path.y || 0);
         drawPathToCanvas(ctx, path, lineOffset, w / scale, h / scale);
+        ctx.restore();
 
         // Helper to get or construct SVG Path Properties for sampling curve positions & tangents
         const getSvgPathNode = (): any => {
@@ -797,14 +848,15 @@ export function renderArtboardToCanvas(
               ctx.rotate(angle);
 
               if (motionObj.type === 'image' && motionObj.imageUrl) {
-                const img = new Image();
-                img.src = motionObj.imageUrl;
+                const img = imageCache[motionObj.imageUrl];
                 const mw = motionObj.imageWidth || 40;
                 const mh = motionObj.imageHeight || 40;
                 if (motionObj.opacity !== undefined) {
                   ctx.globalAlpha = motionObj.opacity;
                 }
-                ctx.drawImage(img, -mw / 2, -mh / 2, mw, mh);
+                if (img) {
+                  ctx.drawImage(img, -mw / 2, -mh / 2, mw, mh);
+                }
               } else {
                 ctx.fillStyle = motionObj.color;
                 if (motionObj.opacity !== undefined) ctx.globalAlpha = motionObj.opacity;

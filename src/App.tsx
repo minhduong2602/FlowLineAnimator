@@ -18,10 +18,12 @@ import { ArtboardCanvas } from './components/ArtboardCanvas';
 import { MetricsBar } from './components/MetricsBar';
 import { ExportModal } from './components/ExportModal';
 import { ImportSvgModal } from './components/ImportSvgModal';
-import { 
+import {
   renderArtboardToCanvas,
   anchorsToPathString,
-  calculateBoundingBox
+  calculateBoundingBox,
+  preloadPathImages,
+  parseHexLuminance
 } from './utils/bezier';
 import { extractPathsFromSvgString, parseSVGPathToAnchors } from './utils/svgImport';
 
@@ -342,7 +344,7 @@ export default function App() {
   };
 
   // High-Resolution PNG Export with optional Transparency
-  const handleExportPNG = (transparent: boolean = true, scale: number = 1) => {
+  const handleExportPNG = async (transparent: boolean = true, scale: number = 1) => {
     const bbox = calculateBoundingBox(paths);
     const width = Math.max(bbox.width, 100);
     const height = Math.max(bbox.height, 100);
@@ -352,11 +354,12 @@ export default function App() {
 
     const offsets: Record<string, number> = {};
     const motionProgress: Record<string, number> = {};
-    paths.forEach(p => { 
-        offsets[p.id] = 0; 
+    paths.forEach(p => {
+        offsets[p.id] = 0;
         motionProgress[p.id] = 0; // At export PNG, just start of motion
     });
-    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale, motionProgress);
+    const imageCache = await preloadPathImages(paths);
+    renderArtboardToCanvas(canvas, paths, offsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale, motionProgress, 0, settings.globalSpeed || 1, settings.gridSize, imageCache);
 
     const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
@@ -370,10 +373,28 @@ export default function App() {
     const svgElem = document.getElementById('artboard-svg');
     if (!svgElem) return;
     const svgClone = svgElem.cloneNode(true) as SVGSVGElement;
-    
-    // Remove temporary edit handles from exported SVG
-    const handles = svgClone.querySelector('.illustrator-handles');
-    if (handles) handles.remove();
+
+    // Remove editor-only chrome: anchor handles, selection halos, bounding boxes
+    svgClone.querySelectorAll('.illustrator-handles, .bounding-box, [data-export-exclude]').forEach(el => el.remove());
+
+    // The live artboard bakes pan/zoom into the content group; the viewBox handles framing here
+    svgClone.querySelector('#artboard-content')?.removeAttribute('transform');
+
+    // Drop the live grid (pan-anchored pattern + CSS var colors) — rebuilt below for the export frame
+    svgClone.querySelector('#artboard-grid')?.remove();
+
+    // Resolve theme CSS variables so the file renders identically outside the app
+    const cssVarMap: Record<string, string> = {
+      'var(--color-ink)': '#0a0a0a',
+      'var(--color-paper)': '#ffffff',
+      'var(--color-canvas)': '#f5f5f5'
+    };
+    svgClone.querySelectorAll('*').forEach(el => {
+      ['stroke', 'fill', 'color'].forEach(attr => {
+        const v = el.getAttribute(attr);
+        if (v && cssVarMap[v]) el.setAttribute(attr, cssVarMap[v]);
+      });
+    });
 
     // Adjust viewBox to the calculated bounding box
     const bbox = calculateBoundingBox(paths);
@@ -382,6 +403,45 @@ export default function App() {
     svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${w} ${h}`);
     svgClone.setAttribute('width', String(w * scale));
     svgClone.setAttribute('height', String(h * scale));
+
+    // Rebuild background + grid as concrete primitives covering exactly the exported frame
+    const NS = 'http://www.w3.org/2000/svg';
+    const content = svgClone.querySelector('#artboard-content') || svgClone;
+    const defs = svgClone.querySelector('defs');
+    if (settings.backgroundColor && settings.backgroundColor !== 'transparent') {
+      const bg = document.createElementNS(NS, 'rect');
+      bg.setAttribute('x', String(bbox.x));
+      bg.setAttribute('y', String(bbox.y));
+      bg.setAttribute('width', String(w));
+      bg.setAttribute('height', String(h));
+      bg.setAttribute('fill', settings.backgroundColor);
+      content.insertBefore(bg, content.firstElementChild);
+    }
+    if (settings.showGrid) {
+      const step = settings.gridSize || 40;
+      const pattern = document.createElementNS(NS, 'pattern');
+      pattern.setAttribute('id', 'export-grid');
+      pattern.setAttribute('x', String(bbox.x));
+      pattern.setAttribute('y', String(bbox.y));
+      pattern.setAttribute('width', String(step));
+      pattern.setAttribute('height', String(step));
+      pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+      const line = document.createElementNS(NS, 'path');
+      line.setAttribute('d', `M ${step} 0 L 0 0 0 ${step}`);
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', parseHexLuminance(settings.backgroundColor) < 0.5 ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)');
+      line.setAttribute('stroke-width', '1');
+      pattern.appendChild(line);
+      if (defs) defs.appendChild(pattern); else svgClone.insertBefore(pattern, svgClone.firstElementChild);
+
+      const gridRect = document.createElementNS(NS, 'rect');
+      gridRect.setAttribute('x', String(bbox.x));
+      gridRect.setAttribute('y', String(bbox.y));
+      gridRect.setAttribute('width', String(w));
+      gridRect.setAttribute('height', String(h));
+      gridRect.setAttribute('fill', 'url(#export-grid)');
+      content.insertBefore(gridRect, content.firstElementChild);
+    }
 
     svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     const svgData = new XMLSerializer().serializeToString(svgClone);
@@ -531,7 +591,7 @@ export default function App() {
   };
 
   // Real-time Canvas Video Recording (WebM) with optional Transparency
-  const handleStartRecordingVideo = (transparent: boolean = false, scale: number = 1) => {
+  const handleStartRecordingVideo = async (transparent: boolean = false, scale: number = 1) => {
     setIsRecording(true);
     setRecordingTime(4);
 
@@ -542,6 +602,8 @@ export default function App() {
     const canvas = document.createElement('canvas');
     canvas.width = width * scale;
     canvas.height = height * scale;
+
+    const imageCache = await preloadPathImages(paths);
 
     const stream = canvas.captureStream(30);
     const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
@@ -565,10 +627,14 @@ export default function App() {
 
     // Render loop for 4 seconds
     let startTime = performance.now();
+    let lastTime = startTime;
     let currentOffsets: Record<string, number> = {};
+    let currentMotionProgress: Record<string, number> = {};
 
     const recordLoop = (time: number) => {
       const elapsed = (time - startTime) / 1000;
+      const dt = Math.min(0.1, (time - lastTime) / 1000);
+      lastTime = time;
       const remaining = Math.max(0, 4 - Math.floor(elapsed));
       setRecordingTime(remaining);
 
@@ -576,9 +642,15 @@ export default function App() {
         const speed = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
         const dir = p.flowDirection === 'reverse' ? 1 : -1;
         currentOffsets[p.id] = (currentOffsets[p.id] || 0) + (1 / 30) * speed * dir;
+
+        // Advance motion objects exactly like the live artboard loop does
+        const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
+        let progress = (currentMotionProgress[p.id] || 0) + motionSpeed * 0.05 * dt;
+        if (progress >= 1) progress %= 1;
+        currentMotionProgress[p.id] = progress;
       });
 
-      renderArtboardToCanvas(canvas, paths, currentOffsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale);
+      renderArtboardToCanvas(canvas, paths, currentOffsets, settings.backgroundColor, settings.showGrid, transparent, { x: -bbox.x, y: -bbox.y }, scale, currentMotionProgress, elapsed, settings.globalSpeed || 1, settings.gridSize, imageCache);
 
       if (elapsed < 4) {
         requestAnimationFrame(recordLoop);

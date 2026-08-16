@@ -27,6 +27,28 @@ self.onmessage = async (e: MessageEvent) => {
     const colorPalette = options.colorPalette || 'adaptive';
     const dithering = options.dithering !== false;
 
+    // Workers have no Image constructor — decode pasted/linked images into bitmaps up front
+    const imageCache: Record<string, ImageBitmap> = {};
+    const imageUrls = new Set<string>(
+      (paths as DrawingPath[])
+        .filter(p => p.type === 'image' && p.imageUrl)
+        .map(p => p.imageUrl as string)
+    );
+    const motionIds = new Set(
+      (paths as DrawingPath[]).filter(p => p.motionObjectId).map(p => p.motionObjectId as string)
+    );
+    (paths as DrawingPath[]).forEach(p => {
+      if (motionIds.has(p.id) && p.type === 'image' && p.imageUrl) imageUrls.add(p.imageUrl);
+    });
+    await Promise.all(Array.from(imageUrls).map(async url => {
+      try {
+        const blob = await (await fetch(url)).blob();
+        imageCache[url] = await createImageBitmap(blob);
+      } catch (err) {
+        console.warn('GIF export: failed to load image', url, err);
+      }
+    }));
+
     // Canvas Pooling: Initialize one OffscreenCanvas to reuse for all frames
     const canvas = new OffscreenCanvas(width, height);
     const encoder = new Encoder({ width, height });
@@ -57,19 +79,21 @@ self.onmessage = async (e: MessageEvent) => {
         });
 
         renderArtboardToCanvas(
-          canvas as any, 
-          paths, 
-          offsets, 
-          settings.backgroundColor, 
-          false, 
-          transparent, 
-          { x: -bbox.x, y: -bbox.y }, 
-          scale, 
+          canvas as any,
+          paths,
+          offsets,
+          settings.backgroundColor,
+          settings.showGrid,
+          transparent,
+          { x: -bbox.x, y: -bbox.y },
+          scale,
           motionProgress,
           timeElapsed,
-          settings.globalSpeed || 1
+          settings.globalSpeed || 1,
+          settings.gridSize,
+          imageCache
         );
-        
+
         const ctx = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
         const imageData = ctx.getImageData(0, 0, width, height);
         samplePointContainers.push(utils.PointContainer.fromUint8Array(imageData.data, width, height));
@@ -118,17 +142,19 @@ self.onmessage = async (e: MessageEvent) => {
       });
 
       renderArtboardToCanvas(
-        canvas as any, 
-        paths, 
-        offsets, 
-        settings.backgroundColor, 
-        false, 
-        transparent, 
-        { x: -bbox.x, y: -bbox.y }, 
-        scale, 
+        canvas as any,
+        paths,
+        offsets,
+        settings.backgroundColor,
+        settings.showGrid,
+        transparent,
+        { x: -bbox.x, y: -bbox.y },
+        scale,
         motionProgress,
         timeElapsed,
-        settings.globalSpeed || 1
+        settings.globalSpeed || 1,
+        settings.gridSize,
+        imageCache
       );
 
       const ctx = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;

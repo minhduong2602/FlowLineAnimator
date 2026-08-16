@@ -1354,6 +1354,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
+        {/* Export background — keep the editing canvas in sync with what exports render */}
+        {settings.backgroundColor && settings.backgroundColor !== 'transparent' && (
+          <rect x="0" y="0" width="100%" height="100%" fill={settings.backgroundColor} pointerEvents="none" />
+        )}
         <defs>
           {GRADIENT_PRESETS.map(grad => (
             <linearGradient key={grad.id} id={`grad-${grad.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -1443,7 +1447,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
         {/* Background Grid */}
         {settings.showGrid && (
-          <g className="opacity-25 pointer-events-none">
+          <g id="artboard-grid" className="opacity-25 pointer-events-none">
             <defs>
               <pattern id="grid" x={pan.x} y={pan.y} width={settings.gridSize || 40} height={settings.gridSize || 40} patternUnits="userSpaceOnUse">
                 <path d={`M ${settings.gridSize || 40} 0 L 0 0 0 ${settings.gridSize || 40}`} fill="none" stroke="var(--color-ink)" opacity="0.1" strokeWidth="1" />
@@ -1453,7 +1457,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           </g>
         )}
 
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${settings.zoom || 1})`}>
+        <g id="artboard-content" transform={`translate(${pan.x}, ${pan.y}) scale(${settings.zoom || 1})`}>
           {/* Render Saved Vector Paths */}
           {paths.map(path => {
             if (!path.enabled) return null;
@@ -1497,13 +1501,13 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                     opacity={path.opacity ?? 1}
                   />
                   {isSelected && (
-                    <>
-                      <rect 
-                        width={path.imageWidth || 100} 
-                        height={path.imageHeight || 100} 
-                        fill="none" 
-                        stroke="#00F2FF" 
-                        strokeWidth={1.5} 
+                    <g data-export-exclude="true">
+                      <rect
+                        width={path.imageWidth || 100}
+                        height={path.imageHeight || 100}
+                        fill="none"
+                        stroke="#00F2FF"
+                        strokeWidth={1.5}
                       />
                       {activeTool === 'select' && (() => {
                         const minX = 0;
@@ -1550,7 +1554,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                           </g>
                         );
                       })()}
-                    </>
+                    </g>
                   )}
                 </g>
               );
@@ -1666,7 +1670,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
               {/* Selection Halo */}
               {isSelected && (
-                <>
+                <g data-export-exclude="true">
                   <path
                     d={d}
                     fill="none"
@@ -1739,7 +1743,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                       </g>
                     );
                   })()}
-                </>
+                </g>
               )}
             </g>
           );
@@ -1850,7 +1854,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
         {/* Live Pen Tool Construction Path Preview */}
         {penAnchors.length > 0 && (
-          <g>
+          <g data-export-exclude="true">
             <path
               d={getPenPreviewPath()}
               fill="none"
@@ -1897,6 +1901,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                     ], false, 0, 'elbow')
                   : anchorsToPathString(fitSmoothBezierAnchors(rawPencilPoints, settings.pencilSmoothness || 6))
               }
+              data-export-exclude="true"
               fill="none"
               stroke="var(--color-ink)"
               strokeWidth={3.5}
@@ -1928,6 +1933,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                   return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy}`;
                 }
               })()}
+              data-export-exclude="true"
               fill="rgba(0, 242, 255, 0.1)"
               stroke="var(--color-ink)"
               strokeWidth={2}
@@ -1941,6 +1947,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           {/* Marquee Selection */}
           {marqueeStart && marqueeEnd && (
             <rect
+              data-export-exclude="true"
               x={Math.min(marqueeStart.x, marqueeEnd.x)}
               y={Math.min(marqueeStart.y, marqueeEnd.y)}
               width={Math.abs(marqueeEnd.x - marqueeStart.x)}
