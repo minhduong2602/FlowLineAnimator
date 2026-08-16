@@ -18,12 +18,14 @@
     "d3": "^7.9.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "image-q": "^4.0.0",
     "lucide-react": "^0.546.0",
     "modern-gif": "^2.1.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "svg-path-parser": "^1.1.0",
+    "svg-path-properties": "^2.0.2",
     "vite": "^6.2.3"
   },
   "devDependencies": {

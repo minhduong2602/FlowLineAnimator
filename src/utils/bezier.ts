@@ -1,5 +1,6 @@
 import { Point, AnchorPoint, DrawingPath } from '../types';
 import { GRADIENT_PRESETS, DASH_PRESETS } from '../data/presets';
+import { svgPathProperties } from 'svg-path-properties';
 
 /**
  * Generate a unique ID
@@ -687,16 +688,13 @@ export function renderArtboardToCanvas(
         const lineOffset = dashOffsets[path.id] || 0;
         drawPathToCanvas(ctx, path, lineOffset, w / scale, h / scale);
 
-        // Helper to get or construct SVG Path Element for sampling curve positions & tangents
-        const getSvgPathNode = (): SVGPathElement | null => {
-          let node = document.getElementById(`${path.id}-stroke`) as SVGPathElement | null;
-          if (!node && path.anchors && path.anchors.length > 0) {
+        // Helper to get or construct SVG Path Properties for sampling curve positions & tangents
+        const getSvgPathNode = (): any => {
+          if (path.anchors && path.anchors.length > 0) {
             const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
-            const temp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            temp.setAttribute('d', d);
-            node = temp;
+            return new svgPathProperties(d);
           }
-          return node;
+          return null;
         };
 
         // ── Render Animated Chevrons (Arrow Flow) ──

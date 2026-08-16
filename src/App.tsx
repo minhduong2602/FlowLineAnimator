@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { encode } from 'modern-gif';
+import { buildPalette, applyPalette, utils } from 'image-q';
 import { 
   DrawingPath, 
   DrawTool, 
@@ -156,8 +157,9 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [paths]);
 
-  const handleAddPath = (newPath: DrawingPath) => {
-    updatePathsAndCommit(prev => [...prev, newPath]);
+  const handleAddPath = (path: DrawingPath) => {
+    updatePathsAndCommit(currentPaths => [...currentPaths, path]);
+    setSelectedPathId(path.id);
   };
 
   const handleUpdatePath = (id: string, updates: Partial<DrawingPath>) => {
@@ -400,78 +402,84 @@ export default function App() {
     a.click();
   };
 
-  // Helper promise to create single GIF from a list of paths
+  const exportWorkerRef = useRef<Worker | null>(null);
+
+  // Helper promise to create single GIF from a list of paths via Web Worker
   const generateGifForPaths = async (
     targetPaths: DrawingPath[], 
     transparent: boolean, 
     filename: string,
     scale: number = 1,
     fps: number = 15,
-    durationInSeconds: number = 2
+    durationInSeconds: number = 2,
+    colorPalette: 'adaptive' | 'web-safe' | 'grayscale' = 'adaptive',
+    dithering: boolean = true
   ): Promise<void> => {
-    const bbox = calculateBoundingBox(targetPaths);
-    const width = Math.max(bbox.width, 100);
-    const height = Math.max(bbox.height, 100);
-    const frameCount = Math.floor(fps * durationInSeconds);
-    const frameDelayMs = Math.floor(1000 / fps);
-    const frames: HTMLCanvasElement[] = [];
+    return new Promise((resolve, reject) => {
+      if (exportWorkerRef.current) {
+        exportWorkerRef.current.terminate();
+      }
 
-    for (let f = 0; f < frameCount; f++) {
-      const canvas = document.createElement('canvas');
-      canvas.width = width * scale;
-      canvas.height = height * scale;
+      const worker = new Worker(new URL('./workers/gifWorker.ts', import.meta.url), { type: 'module' });
+      exportWorkerRef.current = worker;
 
-      const offsets: Record<string, number> = {};
-      const motionProgress: Record<string, number> = {};
-      const timeElapsed = f * (frameDelayMs / 1000); // converting frame index to elapsed seconds
-      
-      targetPaths.forEach(p => {
-        // Continuous dash flow velocity: 45 px/sec per unit speed (matches ArtboardCanvas animation loop)
-        const flowVelocity = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
-        const dir = p.flowDirection === 'reverse' ? 1 : -1;
-        offsets[p.id] = timeElapsed * flowVelocity * dir;
+      const jobId = Date.now().toString();
 
-        const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
-        const duration = Math.max(0.5, 20 / motionSpeed);
-        motionProgress[p.id] = (timeElapsed % duration) / duration;
+      worker.onmessage = (e) => {
+        const { type, text, error, result, id } = e.data;
+        if (id !== jobId) return;
+
+        if (type === 'progress') {
+          setGifProgressText(text);
+        } else if (type === 'error') {
+          console.error('Worker GIF export error:', error);
+          worker.terminate();
+          exportWorkerRef.current = null;
+          reject(new Error(error));
+        } else if (type === 'done') {
+          const url = URL.createObjectURL(result);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 10000); // Allow time for download to start before cleanup
+          
+          worker.terminate();
+          exportWorkerRef.current = null;
+          resolve();
+        }
+      };
+
+      worker.onerror = (err) => {
+        console.error('Worker error:', err);
+        worker.terminate();
+        exportWorkerRef.current = null;
+        reject(err);
+      };
+
+      worker.postMessage({
+        id: jobId,
+        paths: targetPaths,
+        settings,
+        options: {
+          scale,
+          fps,
+          duration: durationInSeconds,
+          transparent,
+          colorPalette,
+          dithering
+        }
       });
+    });
+  };
 
-      renderArtboardToCanvas(
-        canvas, 
-        targetPaths, 
-        offsets, 
-        settings.backgroundColor, 
-        false, 
-        transparent, 
-        { x: -bbox.x, y: -bbox.y }, 
-        scale, 
-        motionProgress,
-        timeElapsed,
-        settings.globalSpeed || 1
-      );
-      frames.push(canvas);
+  const handleCancelExportGIF = () => {
+    if (exportWorkerRef.current) {
+      exportWorkerRef.current.terminate();
+      exportWorkerRef.current = null;
     }
-
-    try {
-      const buffer = await encode({
-        width: width * scale,
-        height: height * scale,
-        frames: frames.map(canvas => ({
-          data: canvas,
-          delay: frameDelayMs,
-          transparent
-        }))
-      });
-
-      const blob = new Blob([buffer], { type: 'image/gif' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-    } catch (err) {
-      console.error('GIF export error:', err);
-    }
+    setIsExportingGIF(false);
+    setGifProgressText('');
   };
 
   // Enhanced Animated GIF Export: Supports Transparent Background & Separate Layer Export
@@ -482,6 +490,8 @@ export default function App() {
     scale: number;
     fps: number;
     duration: number;
+    colorPalette: 'adaptive' | 'web-safe' | 'grayscale';
+    dithering: boolean;
   }) => {
     setIsExportingGIF(true);
 
@@ -490,30 +500,30 @@ export default function App() {
       const scale = options.scale || 1;
 
       if (options.exportSeparateLayers) {
-        // Export each enabled layer as an individual animated GIF file
         for (let i = 0; i < enabledPaths.length; i++) {
+          if (!isExportingGIF) break; // Check if cancelled
           const layer = enabledPaths[i];
           setGifProgressText(`Rendering Layer ${i + 1} of ${enabledPaths.length}: "${layer.name}"...`);
           const safeName = layer.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`, scale, options.fps, options.duration);
-          // Slight delay between downloads
+          await generateGifForPaths([layer], options.transparent, `${safeName || 'layer'}-flow.gif`, scale, options.fps, options.duration, options.colorPalette, options.dithering);
           await new Promise(r => setTimeout(r, 400));
         }
       } else if (options.singleLayerId) {
-        // Export single selected layer
         const target = paths.find(p => p.id === options.singleLayerId) || enabledPaths[0];
         if (target) {
           setGifProgressText(`Rendering "${target.name}" GIF...`);
           const safeName = target.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`, scale, options.fps, options.duration);
+          await generateGifForPaths([target], options.transparent, `${safeName}-flow.gif`, scale, options.fps, options.duration, options.colorPalette, options.dithering);
         }
       } else {
-        // Export full composition
-        setGifProgressText(`Rendering Animated Composition (${options.transparent ? 'Transparent' : 'Solid'})...`);
-        await generateGifForPaths(paths, options.transparent, 'vector-flow-artboard.gif', scale, options.fps, options.duration);
+        await generateGifForPaths(paths, options.transparent, 'vector-flow-artboard.gif', scale, options.fps, options.duration, options.colorPalette, options.dithering);
       }
     } catch (err) {
-      console.error('GIF generation error:', err);
+      if (err instanceof Error && err.message.includes('abort')) {
+        console.log('Export cancelled');
+      } else {
+        console.error('GIF generation error:', err);
+      }
     } finally {
       setIsExportingGIF(false);
       setGifProgressText('');
@@ -620,6 +630,7 @@ export default function App() {
             paths={paths}
             selectedPathId={selectedPathId}
             onSelectPath={setSelectedPathId}
+            onAddPath={handleAddPath}
             onUpdatePath={handleUpdatePath}
             onDeletePath={handleDeletePath}
             settings={settings}
@@ -648,6 +659,7 @@ export default function App() {
         recordingTime={recordingTime}
         isExportingGIF={isExportingGIF}
         gifProgressText={gifProgressText}
+        onCancelExportGIF={handleCancelExportGIF}
       />
 
       <ImportSvgModal

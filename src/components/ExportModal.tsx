@@ -22,12 +22,13 @@ interface ExportModalProps {
   onExportPNG: (transparent: boolean, scale: number) => void;
   onExportSVG: (scale: number) => void;
   onExportJSON: () => void;
-  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string; scale: number; fps: number; duration: number }) => void;
+  onExportGIF: (options: { transparent: boolean; exportSeparateLayers: boolean; singleLayerId?: string; scale: number; fps: number; duration: number; colorPalette: 'adaptive' | 'web-safe' | 'grayscale'; dithering: boolean }) => void;
   onStartRecordingVideo: (transparent: boolean, scale: number) => void;
   isRecording: boolean;
   recordingTime: number;
   isExportingGIF: boolean;
   gifProgressText?: string;
+  onCancelExportGIF?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -43,13 +44,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isRecording,
   recordingTime,
   isExportingGIF,
-  gifProgressText
+  gifProgressText,
+  onCancelExportGIF
 }) => {
   const [transparentBg, setTransparentBg] = useState<boolean>(true);
   const [exportMode, setExportMode] = useState<'all-in-one' | 'separate-layers' | 'selected-layer'>('all-in-one');
   const [exportScale, setExportScale] = useState<number>(1);
   const [gifFps, setGifFps] = useState<number>(15);
   const [gifDuration, setGifDuration] = useState<number>(2);
+  const [colorPalette, setColorPalette] = useState<'adaptive' | 'web-safe' | 'grayscale'>('adaptive');
+  const [dithering, setDithering] = useState<boolean>(true);
 
   if (!isOpen) return null;
 
@@ -143,6 +147,48 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <div className="text-[10px] opacity-75">Artboard Background + Grid</div>
                 </div>
               </button>
+            </div>
+          </div>
+
+          {/* Color Palette & Dithering */}
+          <div className="bg-[var(--color-paper)] border border-[var(--color-hairline)] rounded-[24px] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-ink)] flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5" />
+                Color & Dithering Engine
+              </span>
+              <span className="text-[10px] text-[var(--color-mid-gray)] font-mono">Quantization</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase tracking-wider text-[var(--color-mid-gray)] font-semibold block">Color Palette</label>
+                <select
+                  value={colorPalette}
+                  onChange={(e) => setColorPalette(e.target.value as any)}
+                  className="w-full bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] text-[var(--color-ink)] text-xs rounded-lg p-2 outline-none focus:border-[var(--color-ink)] transition-colors"
+                >
+                  <option value="adaptive">Adaptive (Best)</option>
+                  <option value="web-safe">Web-Safe (216 colors)</option>
+                  <option value="grayscale">Grayscale</option>
+                </select>
+              </div>
+              
+              <div className="space-y-1 flex flex-col justify-end">
+                <button
+                  onClick={() => setDithering(!dithering)}
+                  className={`w-full py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                    dithering
+                      ? 'bg-[var(--color-ink)]/15 border-[var(--color-ink)] text-[var(--color-ink)]'
+                      : 'bg-[var(--color-surface-alt)] border-[var(--color-hairline)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
+                  }`}
+                >
+                  <div className={`w-3 h-3 rounded flex items-center justify-center ${dithering ? 'bg-[var(--color-ink)]' : 'border border-[var(--color-mid-gray)]'}`}>
+                    {dithering && <Check className="w-2.5 h-2.5 text-[var(--color-paper)]" />}
+                  </div>
+                  Floyd-Steinberg Dither
+                </button>
+              </div>
             </div>
           </div>
 
@@ -249,42 +295,54 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
 
             {/* Action Button for GIF Export */}
-            <button
-              onClick={() => {
-                onExportGIF({
-                  transparent: transparentBg,
-                  exportSeparateLayers: exportMode === 'separate-layers',
-                  singleLayerId: exportMode === 'selected-layer' && selectedPath ? selectedPath.id : undefined,
-                  scale: exportScale,
-                  fps: gifFps,
-                  duration: gifDuration
-                });
-              }}
-              disabled={isExportingGIF || enabledPaths.length === 0}
-              className={`w-full py-3 rounded-[24px] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
-                isExportingGIF 
-                  ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] cursor-not-allowed'
-                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] shadow-emerald-500/20'
-              }`}
-            >
-              {isExportingGIF ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{gifProgressText || 'Rendering Transparent GIF...'}</span>
-                </>
-              ) : (
-                <>
-                  <Film className="w-4 h-4" />
-                  <span>
-                    {exportMode === 'separate-layers' 
-                      ? `Export ${enabledPaths.length} Separate Layer GIFs (${transparentBg ? 'Transparent' : 'Dark Canvas'})` 
-                      : exportMode === 'selected-layer' 
-                      ? `Export "${selectedPath?.name || 'Selected'}" GIF` 
-                      : `Export Animated Composition GIF (${transparentBg ? 'Transparent' : 'Solid'})`}
-                  </span>
-                </>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  onExportGIF({
+                    transparent: transparentBg,
+                    exportSeparateLayers: exportMode === 'separate-layers',
+                    singleLayerId: exportMode === 'selected-layer' && selectedPath ? selectedPath.id : undefined,
+                    scale: exportScale,
+                    fps: gifFps,
+                    duration: gifDuration,
+                    colorPalette,
+                    dithering
+                  });
+                }}
+                disabled={isExportingGIF || enabledPaths.length === 0}
+                className={`w-full py-3 rounded-[24px] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                  isExportingGIF 
+                    ? 'bg-[var(--color-canvas)] text-[var(--color-ink)] border border-[var(--color-ink)] cursor-not-allowed'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-[var(--color-ink)] [box-shadow:var(--shadow-subtle)] shadow-emerald-500/20'
+                }`}
+              >
+                {isExportingGIF ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{gifProgressText || 'Rendering Transparent GIF...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Film className="w-4 h-4" />
+                    <span>
+                      {exportMode === 'separate-layers' 
+                        ? `Export ${enabledPaths.length} Separate Layer GIFs (${transparentBg ? 'Transparent' : 'Dark Canvas'})` 
+                        : exportMode === 'selected-layer' 
+                        ? `Export "${selectedPath?.name || 'Selected'}" GIF` 
+                        : `Export Animated Composition GIF (${transparentBg ? 'Transparent' : 'Solid'})`}
+                    </span>
+                  </>
+                )}
+              </button>
+              {isExportingGIF && onCancelExportGIF && (
+                <button
+                  onClick={onCancelExportGIF}
+                  className="w-full py-2 rounded-[24px] font-bold text-xs uppercase tracking-wider text-red-500 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 transition-all"
+                >
+                  Cancel Export
+                </button>
               )}
-            </button>
+            </div>
           </div>
 
           {/* WebM Real-Time Video Recording Section */}
