@@ -65,8 +65,8 @@ const CollapsibleSection: React.FC<{
 
 export interface SidebarControlsProps {
   paths: DrawingPath[];
-  selectedPathId: string | null;
-  onSelectPath: (id: string) => void;
+  selectedPathIds: string[];
+  onSelectPaths: (ids: string[]) => void;
   onAddPath: (path: DrawingPath) => void;
   onUpdatePath: (id: string, updates: Partial<DrawingPath>) => void;
   onDeletePath: (id: string) => void;
@@ -76,8 +76,8 @@ export interface SidebarControlsProps {
 
 export const SidebarControls: React.FC<SidebarControlsProps> = ({
   paths,
-  selectedPathId,
-  onSelectPath,
+  selectedPathIds,
+  onSelectPaths,
   onAddPath,
   onUpdatePath,
   onDeletePath,
@@ -85,6 +85,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
   onUpdateSettings
 }) => {
   const [activeTab, setActiveTab] = useState<'paths' | 'settings'>('paths');
+  const selectedPathId = selectedPathIds.length === 1 ? selectedPathIds[0] : null;
   const selectedPath = paths.find(p => p.id === selectedPathId);
 
   return (
@@ -132,9 +133,9 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                 {[...paths].reverse().map((p) => (
                   <div
                     key={p.id}
-                    onClick={() => onSelectPath(p.id)}
+                    onClick={() => onSelectPaths([p.id])}
                     className={`flex items-center justify-between px-2 py-1 rounded cursor-pointer border transition-colors ${
-                      selectedPathId === p.id
+                      selectedPathIds.includes(p.id)
                         ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
                         : 'bg-[var(--color-surface-alt)]/50 text-[var(--color-mid-gray)] border-transparent hover:border-[var(--color-hairline)] hover:text-[var(--color-ink)]'
                     }`}
@@ -201,7 +202,7 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           }));
                         }
                         onAddPath(duplicate);
-                        onSelectPath(duplicate.id);
+                        onSelectPaths([duplicate.id]);
                       }}
                       title="Duplicate Layer"
                       className="p-1 text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-alt)] rounded transition-colors"

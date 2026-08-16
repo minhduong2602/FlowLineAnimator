@@ -57,7 +57,9 @@ export default function App() {
   
   const { paths, history, historyIndex } = appState;
 
-  const [selectedPathId, setSelectedPathId] = useState<string | null>('path-wave');
+  const [selectedPathIds, setSelectedPathIds] = useState<string[]>(['path-wave']);
+  // Backward-compat helpers
+  const selectedPathId = selectedPathIds.length === 1 ? selectedPathIds[0] : null;
   const [activeTool, setActiveTool] = useState<DrawTool>('direct-select');
   const [settings, setSettings] = useState<ArtboardSettings>(INITIAL_SETTINGS);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
@@ -159,7 +161,7 @@ export default function App() {
 
   const handleAddPath = (path: DrawingPath) => {
     updatePathsAndCommit(currentPaths => [...currentPaths, path]);
-    setSelectedPathId(path.id);
+    setSelectedPathIds([path.id]);
   };
 
   const handleUpdatePath = (id: string, updates: Partial<DrawingPath>) => {
@@ -197,14 +199,12 @@ export default function App() {
 
   const handleDeletePath = (id: string) => {
     updatePathsAndCommit(prev => prev.filter(p => p.id !== id));
-    if (selectedPathId === id) {
-      setSelectedPathId(null);
-    }
+    setSelectedPathIds(prev => prev.filter(pid => pid !== id));
   };
 
   const handleClearPaths = () => {
     updatePathsAndCommit(() => []);
-    setSelectedPathId(null);
+    setSelectedPathIds([]);
   };
 
   useEffect(() => {
@@ -226,9 +226,9 @@ export default function App() {
         e.preventDefault();
         handleRedo();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!e.defaultPrevented && selectedPathId) {
+        if (!e.defaultPrevented && selectedPathIds.length > 0) {
           e.preventDefault();
-          handleDeletePath(selectedPathId);
+          selectedPathIds.forEach(id => handleDeletePath(id));
         }
       }
     };
@@ -276,7 +276,7 @@ export default function App() {
                     pathType: 'image'
                   };
                   updatePathsAndCommit(prev => [...prev, newLayer]);
-                  setSelectedPathId(newLayer.id);
+                  setSelectedPathIds([newLayer.id]);
                 };
                 img.src = event.target.result;
               }
@@ -294,7 +294,7 @@ export default function App() {
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('paste', handlePaste);
     };
-  }, [handleUndo, handleRedo, handleDeletePath, selectedPathId]);
+  }, [handleUndo, handleRedo, handleDeletePath, selectedPathIds]);
 
   const handleImportSVG = (svgData: string) => {
     const extractedPaths = extractPathsFromSvgString(svgData);
@@ -325,7 +325,7 @@ export default function App() {
     });
 
     updatePathsAndCommit(prev => [...prev, ...newPaths]);
-    setSelectedPathId(newPaths[newPaths.length - 1].id);
+    setSelectedPathIds([newPaths[newPaths.length - 1].id]);
     setActiveTool('direct-select');
   };
 
@@ -612,8 +612,8 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden relative">
         <ArtboardCanvas
           paths={paths}
-          selectedPathId={selectedPathId}
-          onSelectPath={setSelectedPathId}
+          selectedPathIds={selectedPathIds}
+          onSelectPaths={setSelectedPathIds}
           onAddPath={handleAddPath}
           onUpdatePath={handleUpdatePath}
           onDeletePath={handleDeletePath}
@@ -628,8 +628,8 @@ export default function App() {
         {sidebarOpen && (
           <SidebarControls
             paths={paths}
-            selectedPathId={selectedPathId}
-            onSelectPath={setSelectedPathId}
+            selectedPathIds={selectedPathIds}
+            onSelectPaths={setSelectedPathIds}
             onAddPath={handleAddPath}
             onUpdatePath={handleUpdatePath}
             onDeletePath={handleDeletePath}
@@ -649,7 +649,7 @@ export default function App() {
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         paths={paths}
-        selectedPathId={selectedPathId}
+        selectedPathIds={selectedPathIds}
         onExportPNG={handleExportPNG}
         onExportSVG={handleExportSVG}
         onExportJSON={handleExportJSON}

@@ -18,7 +18,7 @@ interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   paths: DrawingPath[];
-  selectedPathId: string | null;
+  selectedPathIds: string[];
   onExportPNG: (transparent: boolean, scale: number) => void;
   onExportSVG: (scale: number) => void;
   onExportJSON: () => void;
@@ -35,7 +35,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   paths,
-  selectedPathId,
+  selectedPathIds,
   onExportPNG,
   onExportSVG,
   onExportJSON,
@@ -58,6 +58,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   if (!isOpen) return null;
 
   const enabledPaths = paths.filter(p => p.enabled);
+  const selectedPathId = selectedPathIds.length === 1 ? selectedPathIds[0] : null;
   const selectedPath = paths.find(p => p.id === selectedPathId);
 
   return (

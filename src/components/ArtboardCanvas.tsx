@@ -123,11 +123,22 @@ const MotionObjectOverlay: React.FC<{
   );
 };
 
+const RESIZE_CURSORS = [
+  'cursor-nwse-resize', // 0: TL
+  'cursor-ns-resize',   // 1: TC
+  'cursor-nesw-resize', // 2: TR
+  'cursor-ew-resize',   // 3: ML
+  'cursor-ew-resize',   // 4: MR
+  'cursor-nesw-resize', // 5: BL
+  'cursor-ns-resize',   // 6: BC
+  'cursor-nwse-resize', // 7: BR
+];
+
 interface ArtboardCanvasProps {
 
   paths: DrawingPath[];
-  selectedPathId: string | null;
-  onSelectPath: (id: string | null) => void;
+  selectedPathIds: string[];
+  onSelectPaths: (ids: string[]) => void;
   onAddPath: (path: DrawingPath) => void;
   onUpdatePath: (id: string, updates: Partial<DrawingPath>) => void;
   onDeletePath: (id: string) => void;
@@ -145,13 +156,13 @@ type DragTarget =
   | { type: 'handleIn'; index: number }
   | { type: 'handleOut'; index: number }
   | { type: 'wholePath' }
-  | { type: 'resize'; handle: number }
+  | { type: 'resize'; handle: number; initialAnchors: AnchorPoint[]; initialBBox: { minX: number; minY: number; maxX: number; maxY: number }; initialOrigin: Point; initialImgW?: number; initialImgH?: number; initialX?: number; initialY?: number }
   | null;
 
 export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   paths,
-  selectedPathId,
-  onSelectPath,
+  selectedPathIds,
+  onSelectPaths,
   onAddPath,
   onUpdatePath,
   onDeletePath,
@@ -164,6 +175,10 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   isPlaying
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  // Backward-compat helpers
+  const selectedPathId = selectedPathIds.length === 1 ? selectedPathIds[0] : null;
+  const selectedPath = paths.find(p => selectedPathIds.length > 0 && p.id === selectedPathIds[0]) || null;
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
@@ -192,7 +207,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<Point | null>(null);
 
-  const selectedPath = paths.find(p => p.id === selectedPathId);
+
 
   // Zoom Handler
   useEffect(() => {
@@ -289,6 +304,28 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPathId, selectedPath, selectedAnchorIndex, penAnchors, activeTool]);
 
+  // Global mouseup to prevent stuck dragging/drawing if mouse is released outside SVG
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (dragTarget) {
+        setDragTarget(null);
+        setDragStartPoint(null);
+        onCommitHistory?.();
+      }
+      if (isPanning) {
+        setIsPanning(false);
+        setPanStart(null);
+      }
+      if (marqueeStart) {
+        setMarqueeStart(null);
+        setMarqueeEnd(null);
+      }
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [dragTarget, isPanning, marqueeStart, onCommitHistory]);
+
   const findNearestAnchor = (pos: Point, excludePathId?: string, threshold = 20) => {
     if (!settings.snapToAnchor) return null;
     let nearest: { pathId: string; anchorId: string; point: Point } | null = null;
@@ -369,7 +406,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     };
 
     onAddPath(newPath);
-    onSelectPath(newPathId);
+    onSelectPaths([newPathId]);
     setPenAnchors([]);
     setIsDrawing(false);
     setActiveTool('direct-select');
@@ -525,7 +562,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     // Deselect if clicking on empty canvas in selection mode
     if ((activeTool === 'select' || activeTool === 'direct-select') && !dragTarget) {
       setSelectedAnchorIndex(null);
-      onSelectPath(null);
+      onSelectPaths([]);
       setMarqueeStart(pos);
       setMarqueeEnd(pos);
     }
@@ -610,119 +647,147 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     }
 
     // Direct Selection / Dragging Anchor or Handles or Whole Path
-    if (dragTarget && selectedPathId && selectedPath) {
-      if (dragTarget.type === 'wholePath' && dragStartPoint) {
+    if (dragTarget) {
+      if (dragTarget.type === 'wholePath' && dragStartPoint && selectedPathIds.length > 0) {
         const posNoSnap = getCanvasCoords(e, false);
         const dx = posNoSnap.x - dragStartPoint.x;
         const dy = posNoSnap.y - dragStartPoint.y;
         
         if (dx !== 0 || dy !== 0) {
-          if (selectedPath.type === 'image') {
-            onUpdatePath(selectedPathId, {
-              x: (selectedPath.x || 0) + dx,
-              y: (selectedPath.y || 0) + dy
+          selectedPathIds.forEach(id => {
+            const p = paths.find(item => item.id === id);
+            if (!p) return;
+            onUpdatePath(id, {
+              x: (p.x || 0) + dx,
+              y: (p.y || 0) + dy
             });
-          } else {
-            const updated = selectedPath.anchors.map(anchor => ({
-              ...anchor,
-              point: { x: anchor.point.x + dx, y: anchor.point.y + dy },
-              handleIn: anchor.handleIn ? { x: anchor.handleIn.x + dx, y: anchor.handleIn.y + dy } : null,
-              handleOut: anchor.handleOut ? { x: anchor.handleOut.x + dx, y: anchor.handleOut.y + dy } : null
-            }));
-
-            onUpdatePath(selectedPathId, { anchors: updated });
-          }
+          });
           setDragStartPoint(posNoSnap);
         }
         return;
       }
 
-      if (dragTarget.type === 'resize' && dragStartPoint) {
-        const posNoSnap = getCanvasCoords(e, false);
-        const dx = posNoSnap.x - dragStartPoint.x;
-        const dy = posNoSnap.y - dragStartPoint.y;
+      if (selectedPathId && selectedPath) {
+        if (dragTarget.type === 'resize' && dragTarget.initialOrigin) {
+          const posNoSnap = getCanvasCoords(e, false);
+          // Total displacement from the initial mousedown position
+          const totalDx = posNoSnap.x - dragTarget.initialOrigin.x;
+          const totalDy = posNoSnap.y - dragTarget.initialOrigin.y;
 
-        if (dx !== 0 || dy !== 0) {
-          if (selectedPath.type === 'image') {
-            const minX = 0;
-            const minY = 0;
-            const maxX = selectedPath.imageWidth || 100;
-            const maxY = selectedPath.imageHeight || 100;
+          if (totalDx !== 0 || totalDy !== 0) {
+            const { initialBBox: ib, handle: h } = dragTarget;
+            const isShift = e.shiftKey;
+            const isAlt = e.altKey;
 
-            const oldW = maxX - minX;
-            const oldH = maxY - minY;
-            
-            let newMinX = minX;
-            let newMinY = minY;
-            let newMaxX = maxX;
-            let newMaxY = maxY;
+            // Determine handle direction multipliers
+            // dirX: -1 (left), 1 (right), 0 (center)
+            // dirY: -1 (top), 1 (bottom), 0 (center)
+            const dirX = (h === 0 || h === 3 || h === 5) ? -1 : (h === 2 || h === 4 || h === 7) ? 1 : 0;
+            const dirY = (h === 0 || h === 1 || h === 2) ? -1 : (h === 5 || h === 6 || h === 7) ? 1 : 0;
 
-            const h = dragTarget.handle;
-            if (h === 0 || h === 3 || h === 5) newMinX += dx;
-            if (h === 2 || h === 4 || h === 7) newMaxX += dx;
-            if (h === 0 || h === 1 || h === 2) newMinY += dy;
-            if (h === 5 || h === 6 || h === 7) newMaxY += dy;
+            const deltaW = dirX === 1 ? totalDx : dirX === -1 ? -totalDx : 0;
+            const deltaH = dirY === 1 ? totalDy : dirY === -1 ? -totalDy : 0;
 
-            if (newMaxX - newMinX < 1) newMaxX = newMinX + 1;
-            if (newMaxY - newMinY < 1) newMaxY = newMinY + 1;
+            if (selectedPath.type === 'image') {
+              const origW = Math.max(1, dragTarget.initialImgW || 100);
+              const origH = Math.max(1, dragTarget.initialImgH || 100);
+              const origX = dragTarget.initialX || 0;
+              const origY = dragTarget.initialY || 0;
+              const cx = origW / 2;
+              const cy = origH / 2;
 
-            const newW = newMaxX - newMinX;
-            const newH = newMaxY - newMinY;
+              let targetW = isAlt ? origW + (dirX !== 0 ? 2 * deltaW : 0) : origW + deltaW;
+              let targetH = isAlt ? origH + (dirY !== 0 ? 2 * deltaH : 0) : origH + deltaH;
 
-            // If we resized from the left or top, we need to move the origin
-            const transX = newMinX - minX;
-            const transY = newMinY - minY;
+              if (isShift) {
+                if (dirX !== 0 && dirY !== 0) {
+                  const scale = Math.max(0.01, Math.max(targetW / origW, targetH / origH));
+                  targetW = origW * scale;
+                  targetH = origH * scale;
+                } else if (dirX !== 0) {
+                  const scale = Math.max(0.01, targetW / origW);
+                  targetW = origW * scale;
+                  targetH = origH * scale;
+                } else if (dirY !== 0) {
+                  const scale = Math.max(0.01, targetH / origH);
+                  targetW = origW * scale;
+                  targetH = origH * scale;
+                }
+              }
 
-            onUpdatePath(selectedPathId, {
-              imageWidth: newW,
-              imageHeight: newH,
-              x: (selectedPath.x || 0) + transX,
-              y: (selectedPath.y || 0) + transY,
-            });
-          } else {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            selectedPath.anchors.forEach(a => {
-              const pts = [a.point];
-              if (a.handleIn) pts.push(a.handleIn);
-              if (a.handleOut) pts.push(a.handleOut);
-              pts.forEach(p => {
-                if (p.x < minX) minX = p.x;
-                if (p.y < minY) minY = p.y;
-                if (p.x > maxX) maxX = p.x;
-                if (p.y > maxY) maxY = p.y;
+              targetW = Math.max(1, targetW);
+              targetH = Math.max(1, targetH);
+
+              let newMinX = 0, newMinY = 0;
+              if (isAlt) {
+                newMinX = cx - targetW / 2;
+                newMinY = cy - targetH / 2;
+              } else {
+                if (dirX === 1) newMinX = 0;
+                else if (dirX === -1) newMinX = origW - targetW;
+                else newMinX = cx - targetW / 2;
+
+                if (dirY === 1) newMinY = 0;
+                else if (dirY === -1) newMinY = origH - targetH;
+                else newMinY = cy - targetH / 2;
+              }
+
+              onUpdatePath(selectedPathId, {
+                imageWidth: targetW,
+                imageHeight: targetH,
+                x: origX + newMinX,
+                y: origY + newMinY,
               });
-            });
+            } else {
+              // Vector path resize from initial snapshot
+              const { initialAnchors } = dragTarget;
+              const { minX, minY, maxX, maxY } = ib;
+              const oldW = Math.max(1, maxX - minX);
+              const oldH = Math.max(1, maxY - minY);
+              const cx = (minX + maxX) / 2;
+              const cy = (minY + maxY) / 2;
 
-            if (minX !== Infinity) {
-              const oldW = maxX - minX;
-              const oldH = maxY - minY;
-              
-              let newMinX = minX;
-              let newMinY = minY;
-              let newMaxX = maxX;
-              let newMaxY = maxY;
+              let targetW = isAlt ? oldW + (dirX !== 0 ? 2 * deltaW : 0) : oldW + deltaW;
+              let targetH = isAlt ? oldH + (dirY !== 0 ? 2 * deltaH : 0) : oldH + deltaH;
 
-              // Handle index maps to bounding box corners:
-              // 0: TL, 1: TC, 2: TR
-              // 3: ML,       4: MR
-              // 5: BL, 6: BC, 7: BR
-              const h = dragTarget.handle;
-              if (h === 0 || h === 3 || h === 5) newMinX += dx;
-              if (h === 2 || h === 4 || h === 7) newMaxX += dx;
-              if (h === 0 || h === 1 || h === 2) newMinY += dy;
-              if (h === 5 || h === 6 || h === 7) newMaxY += dy;
+              if (isShift) {
+                if (dirX !== 0 && dirY !== 0) {
+                  const scale = Math.max(0.01, Math.max(targetW / oldW, targetH / oldH));
+                  targetW = oldW * scale;
+                  targetH = oldH * scale;
+                } else if (dirX !== 0) {
+                  const scale = Math.max(0.01, targetW / oldW);
+                  targetW = oldW * scale;
+                  targetH = oldH * scale;
+                } else if (dirY !== 0) {
+                  const scale = Math.max(0.01, targetH / oldH);
+                  targetW = oldW * scale;
+                  targetH = oldH * scale;
+                }
+              }
 
-              // Prevent negative width/height inversion for simplicity
-              if (newMaxX - newMinX < 1) newMaxX = newMinX + 1;
-              if (newMaxY - newMinY < 1) newMaxY = newMinY + 1;
+              targetW = Math.max(1, targetW);
+              targetH = Math.max(1, targetH);
 
-              const newW = newMaxX - newMinX;
-              const newH = newMaxY - newMinY;
+              let newMinX = minX, newMinY = minY;
+              if (isAlt) {
+                newMinX = cx - targetW / 2;
+                newMinY = cy - targetH / 2;
+              } else {
+                if (dirX === 1) newMinX = minX;
+                else if (dirX === -1) newMinX = maxX - targetW;
+                else newMinX = cx - targetW / 2;
 
-              const scaleX = newW / oldW;
-              const scaleY = newH / oldH;
+                if (dirY === 1) newMinY = minY;
+                else if (dirY === -1) newMinY = maxY - targetH;
+                else newMinY = cy - targetH / 2;
+              }
 
-              const updated = selectedPath.anchors.map(anchor => {
+              const scaleX = targetW / oldW;
+              const scaleY = targetH / oldH;
+
+              // Scale from initial anchors
+              const updated = initialAnchors.map(anchor => {
                 const scalePoint = (p: Point) => ({
                   x: newMinX + (p.x - minX) * scaleX,
                   y: newMinY + (p.y - minY) * scaleY
@@ -738,34 +803,38 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
               onUpdatePath(selectedPathId, { anchors: updated });
             }
           }
-          setDragStartPoint(posNoSnap);
+          return;
         }
-        return;
-      }
 
       const updated = [...selectedPath.anchors];
       const anchor = updated[dragTarget.index];
       if (!anchor) return;
 
+      // Convert canvas-space pos → local-space (subtract path translate offset)
+      const localPos: Point = {
+        x: pos.x - (selectedPath.x || 0),
+        y: pos.y - (selectedPath.y || 0)
+      };
+
       if (dragTarget.type === 'anchor') {
         // Move anchor position and translate both handles with it
-        const dx = pos.x - anchor.point.x;
-        const dy = pos.y - anchor.point.y;
+        const dx = localPos.x - anchor.point.x;
+        const dy = localPos.y - anchor.point.y;
 
         updated[dragTarget.index] = {
           ...anchor,
-          point: pos,
+          point: localPos,
           handleIn: anchor.handleIn ? { x: anchor.handleIn.x + dx, y: anchor.handleIn.y + dy } : null,
           handleOut: anchor.handleOut ? { x: anchor.handleOut.x + dx, y: anchor.handleOut.y + dy } : null
         };
       } else if (dragTarget.type === 'handleIn') {
-        const handleIn = { x: pos.x, y: pos.y };
+        const handleIn = { x: localPos.x, y: localPos.y };
         let handleOut = anchor.handleOut;
 
         // If not corner, mirror angle to handleOut (Illustrator smooth point behavior)
         if (!anchor.isCorner && handleOut) {
-          const dx = pos.x - anchor.point.x;
-          const dy = pos.y - anchor.point.y;
+          const dx = localPos.x - anchor.point.x;
+          const dy = localPos.y - anchor.point.y;
           const lenOut = distance(anchor.point, handleOut);
           const lenIn = Math.hypot(dx, dy);
           if (lenIn > 0) {
@@ -776,12 +845,12 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
 
         updated[dragTarget.index] = { ...anchor, handleIn, handleOut };
       } else if (dragTarget.type === 'handleOut') {
-        const handleOut = { x: pos.x, y: pos.y };
+        const handleOut = { x: localPos.x, y: localPos.y };
         let handleIn = anchor.handleIn;
 
         if (!anchor.isCorner && handleIn) {
-          const dx = pos.x - anchor.point.x;
-          const dy = pos.y - anchor.point.y;
+          const dx = localPos.x - anchor.point.x;
+          const dy = localPos.y - anchor.point.y;
           const lenIn = distance(anchor.point, handleIn);
           const lenOut = Math.hypot(dx, dy);
           if (lenOut > 0) {
@@ -794,6 +863,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       }
 
       onUpdatePath(selectedPathId, { anchors: updated });
+      }
     }
   };
 
@@ -836,7 +906,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       const pathsInMarquee = paths.filter(p => {
         if (!p.enabled) return false;
         // Simple bounding box check for now
-        let px = minX, py = minY, pw = 0, ph = 0;
+        let px = 0, py = 0, pw = 0, ph = 0;
         if (p.type === 'image') {
           px = p.x || 0;
           py = p.y || 0;
@@ -845,20 +915,23 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         } else if (p.anchors && p.anchors.length > 0) {
           const xs = p.anchors.map(a => a.point.x);
           const ys = p.anchors.map(a => a.point.y);
-          px = Math.min(...xs);
-          py = Math.min(...ys);
-          pw = Math.max(...xs) - px;
-          ph = Math.max(...ys) - py;
+          const minAnchorX = Math.min(...xs);
+          const minAnchorY = Math.min(...ys);
+          px = (p.x || 0) + minAnchorX;
+          py = (p.y || 0) + minAnchorY;
+          pw = Math.max(...xs) - minAnchorX;
+          ph = Math.max(...ys) - minAnchorY;
         }
         
-        return px >= minX && (px + pw) <= maxX && py >= minY && (py + ph) <= maxY;
+        // AABB intersection check
+        return (px + pw) >= minX && px <= maxX && (py + ph) >= minY && py <= maxY;
       });
 
-      // Select first path if only one found, multi-select not supported yet
-      if (pathsInMarquee.length === 1) {
-        onSelectPath(pathsInMarquee[0].id);
-      } else if (pathsInMarquee.length > 0) {
-        onSelectPath(pathsInMarquee[0].id);
+      const isDrag = Math.abs(marqueeEnd.x - marqueeStart.x) > 3 || Math.abs(marqueeEnd.y - marqueeStart.y) > 3;
+      if (isDrag) {
+        onSelectPaths(pathsInMarquee.map(p => p.id));
+      } else {
+        onSelectPaths([]);
       }
 
       setMarqueeStart(null);
@@ -902,7 +975,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       };
 
       onAddPath(newPath);
-      onSelectPath(newPathId);
+      onSelectPaths([newPathId]);
       setRawPencilPoints([]);
       setActiveTool('direct-select');
       return;
@@ -940,7 +1013,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         };
 
         onAddPath(newPath);
-        onSelectPath(newPathId);
+        onSelectPaths([newPathId]);
       }
       setConnectorStart(null);
       setRawPencilPoints([]);
@@ -976,7 +1049,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
         };
 
         onAddPath(newPath);
-        onSelectPath(newPathId);
+        onSelectPaths([newPathId]);
         setRawPencilPoints([]);
         setActiveTool('direct-select');
       }
@@ -1045,7 +1118,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           };
 
           onAddPath(newPath);
-          onSelectPath(newPathId);
+          onSelectPaths([newPathId]);
         }
         setRawPencilPoints([]);
         setActiveTool('direct-select');
@@ -1385,19 +1458,34 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           {paths.map(path => {
             if (!path.enabled) return null;
             if (path.type === 'image') {
-              const isSelected = selectedPathId === path.id;
+              const isSelected = selectedPathIds.includes(path.id);
               return (
                 <g
                   key={path.id}
                   onMouseDown={(e) => {
                     if (e.button === 1 || (e.button === 0 && e.altKey)) return;
                     e.stopPropagation();
-                    onSelectPath(path.id);
                     
-                    if (activeTool === 'select') {
+                    if (e.shiftKey) {
+                      if (selectedPathIds.includes(path.id)) {
+                        onSelectPaths(selectedPathIds.filter(id => id !== path.id));
+                      } else {
+                        onSelectPaths([...selectedPathIds, path.id]);
+                      }
+                    } else {
+                      if (!selectedPathIds.includes(path.id)) {
+                        onSelectPaths([path.id]);
+                      }
+                    }
+                    
+                    if (activeTool === 'select' || activeTool === 'direct-select') {
                       setDragTarget({ type: 'wholePath' });
                       setDragStartPoint(getCanvasCoords(e, false));
                     }
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setActiveTool('direct-select');
                   }}
                   className="cursor-pointer"
                   transform={`translate(${path.x || 0}, ${path.y || 0})`}
@@ -1440,11 +1528,22 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                                 fill="#FFFFFF"
                                 stroke="#00F2FF"
                                 strokeWidth={1.5}
-                                className="cursor-pointer"
+                                className={RESIZE_CURSORS[i] || 'cursor-pointer'}
                                 onMouseDown={(e) => {
                                   e.stopPropagation();
-                                  setDragTarget({ type: 'resize', handle: i });
-                                  setDragStartPoint(getCanvasCoords(e, false));
+                                  const origin = getCanvasCoords(e, false);
+                                  setDragTarget({
+                                    type: 'resize',
+                                    handle: i,
+                                    initialAnchors: [],
+                                    initialBBox: { minX: 0, minY: 0, maxX: path.imageWidth || 100, maxY: path.imageHeight || 100 },
+                                    initialOrigin: origin,
+                                    initialImgW: path.imageWidth || 100,
+                                    initialImgH: path.imageHeight || 100,
+                                    initialX: path.x || 0,
+                                    initialY: path.y || 0
+                                  });
+                                  setDragStartPoint(origin);
                                 }}
                               />
                             ))}
@@ -1462,7 +1561,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             const dashArray = getDashArray(path);
             const offset = dashOffsets[path.id] || 0;
             const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
-            const isSelected = selectedPathId === path.id;
+            const isSelected = selectedPathIds.includes(path.id);
 
             return (
               <g
@@ -1470,12 +1569,27 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 onMouseDown={(e) => {
                   if (e.button === 1 || (e.button === 0 && e.altKey)) return;
                   e.stopPropagation();
-                  onSelectPath(path.id);
+                  
+                  if (e.shiftKey) {
+                    if (selectedPathIds.includes(path.id)) {
+                      onSelectPaths(selectedPathIds.filter(id => id !== path.id));
+                    } else {
+                      onSelectPaths([...selectedPathIds, path.id]);
+                    }
+                  } else {
+                    if (!selectedPathIds.includes(path.id)) {
+                      onSelectPaths([path.id]);
+                    }
+                  }
                   
                   if (activeTool === 'select' || activeTool === 'direct-select') {
                     setDragTarget({ type: 'wholePath' });
                     setDragStartPoint(getCanvasCoords(e, false));
                   }
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTool('direct-select');
                 }}
                 className="cursor-pointer"
                 transform={path.x || path.y ? `translate(${path.x || 0}, ${path.y || 0})` : undefined}
@@ -1607,11 +1721,18 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                             fill="#FFFFFF"
                             stroke="#00F2FF"
                             strokeWidth={1.5}
-                            className="cursor-pointer"
+                            className={RESIZE_CURSORS[i] || 'cursor-pointer'}
                             onMouseDown={(e) => {
                               e.stopPropagation();
-                              setDragTarget({ type: 'resize', handle: i });
-                              setDragStartPoint(getCanvasCoords(e, false));
+                              const origin = getCanvasCoords(e, false);
+                              setDragTarget({
+                                type: 'resize',
+                                handle: i,
+                                initialAnchors: [...path.anchors],
+                                initialBBox: { minX, minY, maxX, maxY },
+                                initialOrigin: origin
+                              });
+                              setDragStartPoint(origin);
                             }}
                           />
                         ))}
@@ -1624,8 +1745,8 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           );
         })}
 
-        {/* Illustrator-Style Interactive Anchor Points & Tangent Handles */}
-        {selectedPath && selectedPath.enabled && (
+        {/* Illustrator-Style Interactive Anchor Points & Tangent Handles (Only shown in Direct Select, Pen, and Anchor tools) */}
+        {selectedPath && selectedPath.enabled && activeTool !== 'select' && (
           <g className="illustrator-handles pointer-events-auto" transform={selectedPath.x || selectedPath.y ? `translate(${selectedPath.x || 0}, ${selectedPath.y || 0})` : undefined}>
             {selectedPath.anchors.map((anchor, idx) => {
               const isAnchorSelected = selectedAnchorIndex === idx;
@@ -1714,6 +1835,11 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                       e.stopPropagation();
                       setSelectedAnchorIndex(idx);
                       setDragTarget({ type: 'anchor', index: idx });
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAnchorIndex(idx);
+                      handleToggleAnchorSmooth();
                     }}
                   />
                 </g>
@@ -1837,11 +1963,12 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           {selectedPath && <span className="text-[var(--color-mid-gray)]">({selectedPath.name} • {selectedPath.anchors.length} Anchors)</span>}
         </div>
         <div className="bg-[var(--color-paper)]/90 backdrop-blur-md px-3 py-1.5 rounded-[18px] border border-[var(--color-hairline)] pointer-events-auto hidden md:flex items-center gap-3 text-[var(--color-mid-gray)] [box-shadow:var(--shadow-subtle)]">
-          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">A</kbd> Direct Select</span>
-          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">P</kbd> Pen Tool</span>
-          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">N</kbd> Smooth Pencil</span>
-          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">C</kbd> Connector</span>
-          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Del</kbd> Remove Anchor</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Shift</kbd> Lock Ratio</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Alt</kbd> Center Scale</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">A</kbd> Direct</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">P</kbd> Pen</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">N</kbd> Pencil</span>
+          <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Del</kbd> Delete</span>
         </div>
       </div>
     </div>
