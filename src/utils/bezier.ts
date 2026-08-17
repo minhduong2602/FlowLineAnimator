@@ -1,6 +1,7 @@
 import { Point, AnchorPoint, DrawingPath } from '../types';
 import { GRADIENT_PRESETS, DASH_PRESETS } from '../data/presets';
 import { svgPathProperties } from 'svg-path-properties';
+import { parseSVG, makeAbsolute } from 'svg-path-parser';
 
 /**
  * Generate a unique ID
@@ -342,6 +343,219 @@ export function fitSmoothBezierAnchors(rawPoints: Point[], smoothness = 5): Anch
 
 
 
+const splitPathCache = new Map<string, { path1FromCenter: string; path2FromCenter: string; centerPoint: Point; totalLength: number; halfLength: number }>();
+
+function lerpPt(p1: Point, p2: Point, t: number): Point {
+  return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+}
+
+function splitCubicBezier(p0: Point, p1: Point, p2: Point, p3: Point, t: number): { left: [Point, Point, Point, Point]; right: [Point, Point, Point, Point] } {
+  const p01 = lerpPt(p0, p1, t);
+  const p12 = lerpPt(p1, p2, t);
+  const p23 = lerpPt(p2, p3, t);
+
+  const p012 = lerpPt(p01, p12, t);
+  const p123 = lerpPt(p12, p23, t);
+
+  const m = lerpPt(p012, p123, t);
+
+  return {
+    left: [p0, p01, p012, m],
+    right: [m, p123, p23, p3]
+  };
+}
+
+function splitLineSegment(p0: Point, p1: Point, t: number): { left: [Point, Point]; right: [Point, Point] } {
+  const m = lerpPt(p0, p1, t);
+  return {
+    left: [p0, m],
+    right: [m, p1]
+  };
+}
+
+function cubicBezierSegmentLength(p0: Point, p1: Point, p2: Point, p3: Point, steps = 16): number {
+  let len = 0;
+  let prev = p0;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    const pt = {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
+    };
+    len += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+    prev = pt;
+  }
+  return len;
+}
+
+function findCubicBezierTForLength(p0: Point, p1: Point, p2: Point, p3: Point, targetLen: number, totalLen: number): number {
+  if (targetLen <= 0) return 0;
+  if (targetLen >= totalLen) return 1;
+  let low = 0;
+  let high = 1;
+  for (let iter = 0; iter < 16; iter++) {
+    const mid = (low + high) / 2;
+    const { left } = splitCubicBezier(p0, p1, p2, p3, mid);
+    const curLen = cubicBezierSegmentLength(left[0], left[1], left[2], left[3], 12);
+    if (curLen < targetLen) low = mid;
+    else high = mid;
+  }
+  return (low + high) / 2;
+}
+
+/**
+ * Splits an SVG path string at its exact arc-length center point (50%), returning two subpaths:
+ * - path1FromCenter: starts at center M and travels towards the original start point A (M -> A)
+ * - path2FromCenter: starts at center M and travels towards the original end point B (M -> B)
+ */
+export function splitPathAtCenter(d: string): { path1FromCenter: string; path2FromCenter: string; centerPoint: Point; totalLength: number; halfLength: number } | null {
+  if (!d || typeof d !== 'string') return null;
+  if (splitPathCache.has(d)) {
+    return splitPathCache.get(d)!;
+  }
+
+  try {
+    const parsed = parseSVG(d);
+    if (!parsed || parsed.length === 0) return null;
+    const cmds = makeAbsolute(parsed);
+
+    type Segment =
+      | { type: 'L'; p0: Point; p1: Point; length: number }
+      | { type: 'C'; p0: Point; p1: Point; p2: Point; p3: Point; length: number };
+
+    const segments: Segment[] = [];
+    let currentPt: Point = { x: 0, y: 0 };
+    let startPt: Point = { x: 0, y: 0 };
+
+    for (const cmd of cmds) {
+      if (cmd.code === 'M') {
+        currentPt = { x: cmd.x, y: cmd.y };
+        startPt = { ...currentPt };
+      } else if (cmd.code === 'L' || cmd.code === 'H' || cmd.code === 'V') {
+        const endPt = {
+          x: cmd.x !== undefined ? cmd.x : currentPt.x,
+          y: cmd.y !== undefined ? cmd.y : currentPt.y
+        };
+        const len = Math.hypot(endPt.x - currentPt.x, endPt.y - currentPt.y);
+        segments.push({ type: 'L', p0: { ...currentPt }, p1: endPt, length: len });
+        currentPt = endPt;
+      } else if (cmd.code === 'C') {
+        const p0 = { ...currentPt };
+        const p1 = { x: cmd.x1, y: cmd.y1 };
+        const p2 = { x: cmd.x2, y: cmd.y2 };
+        const p3 = { x: cmd.x, y: cmd.y };
+        const len = cubicBezierSegmentLength(p0, p1, p2, p3);
+        segments.push({ type: 'C', p0, p1, p2, p3, length: len });
+        currentPt = p3;
+      } else if (cmd.code === 'S') {
+        const prev = segments[segments.length - 1];
+        let p1 = { ...currentPt };
+        if (prev && prev.type === 'C') {
+          p1 = { x: 2 * currentPt.x - prev.p2.x, y: 2 * currentPt.y - prev.p2.y };
+        }
+        const p0 = { ...currentPt };
+        const p2 = { x: cmd.x2, y: cmd.y2 };
+        const p3 = { x: cmd.x, y: cmd.y };
+        const len = cubicBezierSegmentLength(p0, p1, p2, p3);
+        segments.push({ type: 'C', p0, p1, p2, p3, length: len });
+        currentPt = p3;
+      } else if (cmd.code === 'Q') {
+        const p0 = { ...currentPt };
+        const qp = { x: cmd.x1, y: cmd.y1 };
+        const p3 = { x: cmd.x, y: cmd.y };
+        const p1 = { x: p0.x + (2 / 3) * (qp.x - p0.x), y: p0.y + (2 / 3) * (qp.y - p0.y) };
+        const p2 = { x: p3.x + (2 / 3) * (qp.x - p3.x), y: p3.y + (2 / 3) * (qp.y - p3.y) };
+        const len = cubicBezierSegmentLength(p0, p1, p2, p3);
+        segments.push({ type: 'C', p0, p1, p2, p3, length: len });
+        currentPt = p3;
+      } else if (cmd.code === 'Z') {
+        const len = Math.hypot(startPt.x - currentPt.x, startPt.y - currentPt.y);
+        if (len > 0.001) {
+          segments.push({ type: 'L', p0: { ...currentPt }, p1: { ...startPt }, length: len });
+          currentPt = { ...startPt };
+        }
+      }
+    }
+
+    if (segments.length === 0) return null;
+
+    const totalLength = segments.reduce((sum, s) => sum + s.length, 0);
+    if (totalLength < 0.001) return null;
+    const halfLength = totalLength / 2;
+
+    let accumulated = 0;
+    const leftSegments: Segment[] = [];
+    const rightSegments: Segment[] = [];
+    let centerPoint: Point = { x: 0, y: 0 };
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (accumulated + seg.length < halfLength - 0.0001) {
+        leftSegments.push(seg);
+        accumulated += seg.length;
+      } else if (accumulated < halfLength) {
+        const targetInSeg = halfLength - accumulated;
+        if (seg.type === 'L') {
+          const t = seg.length > 0 ? targetInSeg / seg.length : 0.5;
+          const { left, right } = splitLineSegment(seg.p0, seg.p1, t);
+          centerPoint = left[1];
+          leftSegments.push({ type: 'L', p0: left[0], p1: left[1], length: targetInSeg });
+          rightSegments.push({ type: 'L', p0: right[0], p1: right[1], length: seg.length - targetInSeg });
+        } else {
+          const t = findCubicBezierTForLength(seg.p0, seg.p1, seg.p2, seg.p3, targetInSeg, seg.length);
+          const { left, right } = splitCubicBezier(seg.p0, seg.p1, seg.p2, seg.p3, t);
+          centerPoint = left[3];
+          leftSegments.push({ type: 'C', p0: left[0], p1: left[1], p2: left[2], p3: left[3], length: targetInSeg });
+          rightSegments.push({ type: 'C', p0: right[0], p1: right[1], p2: right[2], p3: right[3], length: seg.length - targetInSeg });
+        }
+        accumulated = halfLength;
+      } else {
+        rightSegments.push(seg);
+      }
+    }
+
+    // Build path 2 (Center -> End): M centerPoint ... rightSegments
+    let path2D = `M ${centerPoint.x} ${centerPoint.y}`;
+    for (const seg of rightSegments) {
+      if (seg.type === 'L') {
+        path2D += ` L ${seg.p1.x} ${seg.p1.y}`;
+      } else if (seg.type === 'C') {
+        path2D += ` C ${seg.p1.x} ${seg.p1.y}, ${seg.p2.x} ${seg.p2.y}, ${seg.p3.x} ${seg.p3.y}`;
+      }
+    }
+
+    // Build path 1 (Center -> Start): Reverse leftSegments (so it flows Center -> Start)
+    let path1D = `M ${centerPoint.x} ${centerPoint.y}`;
+    for (let i = leftSegments.length - 1; i >= 0; i--) {
+      const seg = leftSegments[i];
+      if (seg.type === 'L') {
+        path1D += ` L ${seg.p0.x} ${seg.p0.y}`;
+      } else if (seg.type === 'C') {
+        path1D += ` C ${seg.p2.x} ${seg.p2.y}, ${seg.p1.x} ${seg.p1.y}, ${seg.p0.x} ${seg.p0.y}`;
+      }
+    }
+
+    const result = {
+      path1FromCenter: path1D,
+      path2FromCenter: path2D,
+      centerPoint,
+      totalLength,
+      halfLength
+    };
+
+    if (splitPathCache.size > 200) {
+      splitPathCache.clear();
+    }
+    splitPathCache.set(d, result);
+
+    return result;
+  } catch (err) {
+    console.error('Error splitting path at center:', err);
+    return null;
+  }
+}
+
 /**
  * Draw a single DrawingPath onto a standard Canvas 2D Rendering Context
  */
@@ -373,7 +587,11 @@ export function drawPathToCanvas(
   ctx.strokeStyle = strokeStyle;
 
   const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
+  const isBidirectional = path.flowDirection === 'bidirectional';
+  const split = isBidirectional ? splitPathAtCenter(d) : null;
   const p2d = new Path2D(d);
+  const p2dLeft = split ? new Path2D(split.path1FromCenter) : null;
+  const p2dRight = split ? new Path2D(split.path2FromCenter) : null;
 
   // Render Glow if enabled
   if (path.showGlow) {
@@ -406,7 +624,12 @@ export function drawPathToCanvas(
       ctx.setLineDash([]);
     }
 
-    ctx.stroke(p2d);
+    if (p2dLeft && p2dRight) {
+      ctx.stroke(p2dLeft);
+      ctx.stroke(p2dRight);
+    } else {
+      ctx.stroke(p2d);
+    }
     ctx.restore();
   }
 
@@ -444,11 +667,10 @@ export function drawPathToCanvas(
     ctx.restore();
   }
 
-  ctx.stroke(p2d);
-
-  // Bidirectional: draw a second pass flowing in the opposite direction so dashes emanate from center
-  if (path.flowDirection === 'bidirectional' && preset && preset.id !== 'solid') {
-    ctx.lineDashOffset = -dashOffset;
+  if (p2dLeft && p2dRight) {
+    ctx.stroke(p2dLeft);
+    ctx.stroke(p2dRight);
+  } else {
     ctx.stroke(p2d);
   }
 
@@ -629,31 +851,42 @@ export function calculateBoundingBox(paths: DrawingPath[]) {
 
   let hasPoints = false;
   let maxStroke = 0;
+  let maxCapSize = 0;
 
   paths.forEach(path => {
     if (!path.enabled) return;
     hasPoints = true;
     const box = getBoundingBox(path);
-    if (box.x < minX) minX = box.x;
-    if (box.y < minY) minY = box.y;
-    if (box.x + box.width > maxX) maxX = box.x + box.width;
-    if (box.y + box.height > maxY) maxY = box.y + box.height;
+    if (box.width > 0 || box.height > 0 || path.type === 'image') {
+      if (box.x < minX) minX = box.x;
+      if (box.y < minY) minY = box.y;
+      if (box.x + box.width > maxX) maxX = box.x + box.width;
+      if (box.y + box.height > maxY) maxY = box.y + box.height;
+    }
     
     if (path.strokeWidth > maxStroke) maxStroke = path.strokeWidth;
+    if (path.arrowFlow && (path.arrowFlowSize || 14) > maxCapSize) {
+      maxCapSize = path.arrowFlowSize || 14;
+    }
   });
 
-  if (!hasPoints) {
+  if (!hasPoints || !isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
     return { x: 0, y: 0, width: 800, height: 600 };
   }
 
-  // Margin to prevent cut off (e.g. stroke width + glow spread + generous padding)
-  const margin = maxStroke * 6 + 40;
+  // Generous margin to prevent cut off (covers stroke width, bloom glow spread, arrow caps, chevrons and padding)
+  const margin = Math.max(60, Math.ceil(maxStroke * 4 + maxCapSize * 2 + 40));
   
+  const calculatedX = Math.floor(minX - margin);
+  const calculatedY = Math.floor(minY - margin);
+  const calculatedW = Math.ceil((maxX - minX) + (margin * 2));
+  const calculatedH = Math.ceil((maxY - minY) + (margin * 2));
+
   return {
-    x: Math.floor(minX - margin),
-    y: Math.floor(minY - margin),
-    width: Math.ceil((maxX - minX) + (margin * 2)),
-    height: Math.ceil((maxY - minY) + (margin * 2))
+    x: calculatedX,
+    y: calculatedY,
+    width: Math.max(100, isNaN(calculatedW) ? 800 : calculatedW),
+    height: Math.max(100, isNaN(calculatedH) ? 600 : calculatedH)
   };
 }
 
@@ -756,67 +989,82 @@ export function renderArtboardToCanvas(
 
         // ── Render Animated Chevrons (Arrow Flow) ──
         if (path.arrowFlow) {
-          const svgPathNode = getSvgPathNode();
-          if (svgPathNode) {
+          const isBidirectional = path.flowDirection === 'bidirectional';
+          const pathD = path.anchors && path.anchors.length > 0
+            ? anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing)
+            : '';
+          const split = isBidirectional && pathD ? splitPathAtCenter(pathD) : null;
+
+          const renderChevronsForNode = (svgPathNode: any, reverseDirection: boolean) => {
+            if (!svgPathNode) return;
             try {
               const totalLength = svgPathNode.getTotalLength();
-              if (totalLength > 0) {
-                const arrowCount = 8;
-                const speed = (path.flowSpeed || 1.5) * globalSpeed;
-                const duration = Math.max(0.3, 20 / speed);
-                const baseProgress = (timeElapsed % duration) / duration;
-                const arrowSize = path.arrowFlowSize || 14;
-                const half = arrowSize / 2;
+              if (totalLength <= 0) return;
+              const arrowCount = isBidirectional ? 4 : 8;
+              const speed = (path.flowSpeed || 1.5) * globalSpeed;
+              const duration = Math.max(0.3, 20 / speed);
+              const baseProgress = (timeElapsed % duration) / duration;
+              const arrowSize = path.arrowFlowSize || 14;
+              const half = arrowSize / 2;
 
-                for (let i = 0; i < arrowCount; i++) {
-                  let progress = ((baseProgress + (i / arrowCount)) % 1);
-                  if (path.flowDirection === 'reverse') {
-                    progress = (1 - progress + 1) % 1;
-                  }
-
-                  const currentDist = progress * totalLength;
-                  const pt = svgPathNode.getPointAtLength(currentDist);
-
-                  const sampleDist = 1;
-                  let ptNext = null;
-                  let ptPrev = null;
-                  if (currentDist + sampleDist <= totalLength) {
-                    ptNext = svgPathNode.getPointAtLength(currentDist + sampleDist);
-                    ptPrev = pt;
-                  } else {
-                    ptPrev = svgPathNode.getPointAtLength(Math.max(0, currentDist - sampleDist));
-                    ptNext = pt;
-                  }
-
-                  let angle = 0;
-                  if (ptNext && ptPrev) {
-                    angle = Math.atan2(ptNext.y - ptPrev.y, ptNext.x - ptPrev.x);
-                  }
-                  if (path.flowDirection === 'reverse') {
-                    angle += Math.PI;
-                  }
-
-                  ctx.save();
-                  ctx.translate((path.x || 0) + pt.x, (path.y || 0) + pt.y);
-                  ctx.rotate(angle);
-
-                  ctx.beginPath();
-                  ctx.moveTo(-half, -half * 0.8);
-                  ctx.lineTo(half, 0);
-                  ctx.lineTo(-half, half * 0.8);
-
-                  ctx.strokeStyle = path.color;
-                  ctx.lineWidth = Math.max(1, arrowSize * 0.18);
-                  ctx.lineCap = 'round';
-                  ctx.lineJoin = 'round';
-                  ctx.globalAlpha = (path.opacity ?? 1) * 0.85;
-                  ctx.stroke();
-
-                  ctx.restore();
+              for (let i = 0; i < arrowCount; i++) {
+                let progress = ((baseProgress + (i / arrowCount)) % 1);
+                if (reverseDirection) {
+                  progress = (1 - progress + 1) % 1;
                 }
+
+                const currentDist = progress * totalLength;
+                const pt = svgPathNode.getPointAtLength(currentDist);
+
+                const sampleDist = 1;
+                let ptNext = null;
+                let ptPrev = null;
+                if (currentDist + sampleDist <= totalLength) {
+                  ptNext = svgPathNode.getPointAtLength(currentDist + sampleDist);
+                  ptPrev = pt;
+                } else {
+                  ptPrev = svgPathNode.getPointAtLength(Math.max(0, currentDist - sampleDist));
+                  ptNext = pt;
+                }
+
+                let angle = 0;
+                if (ptNext && ptPrev) {
+                  angle = Math.atan2(ptNext.y - ptPrev.y, ptNext.x - ptPrev.x);
+                }
+                if (reverseDirection) {
+                  angle += Math.PI;
+                }
+
+                ctx.save();
+                ctx.translate((path.x || 0) + pt.x, (path.y || 0) + pt.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(-half, -half * 0.8);
+                ctx.lineTo(half, 0);
+                ctx.lineTo(-half, half * 0.8);
+
+                ctx.strokeStyle = path.color;
+                ctx.lineWidth = Math.max(1, arrowSize * 0.18);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.globalAlpha = (path.opacity ?? 1) * 0.85;
+                ctx.stroke();
+
+                ctx.restore();
               }
             } catch (err) {
               console.error('Error drawing arrow flow on canvas:', err);
+            }
+          };
+
+          if (split) {
+            renderChevronsForNode(new svgPathProperties(split.path1FromCenter), false);
+            renderChevronsForNode(new svgPathProperties(split.path2FromCenter), false);
+          } else {
+            const svgPathNode = getSvgPathNode();
+            if (svgPathNode) {
+              renderChevronsForNode(svgPathNode, path.flowDirection === 'reverse');
             }
           }
         }

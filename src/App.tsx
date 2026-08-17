@@ -199,6 +199,18 @@ export default function App() {
     });
   };
 
+  const handleUpdatePaths = (ids: string[], updates: Partial<DrawingPath>) => {
+    setAppState(prev => ({
+      ...prev,
+      paths: prev.paths.map(p => ids.includes(p.id) ? { ...p, ...updates } : p)
+    }));
+  };
+
+  const handleDeletePaths = (ids: string[]) => {
+    updatePathsAndCommit(prev => prev.filter(p => !ids.includes(p.id)));
+    setSelectedPathIds(prev => prev.filter(pid => !ids.includes(pid)));
+  };
+
   const handleDeletePath = (id: string) => {
     updatePathsAndCommit(prev => prev.filter(p => p.id !== id));
     setSelectedPathIds(prev => prev.filter(pid => pid !== id));
@@ -705,7 +717,9 @@ export default function App() {
             onSelectPaths={setSelectedPathIds}
             onAddPath={handleAddPath}
             onUpdatePath={handleUpdatePath}
+            onUpdatePaths={handleUpdatePaths}
             onDeletePath={handleDeletePath}
+            onDeletePaths={handleDeletePaths}
             settings={settings}
             onUpdateSettings={(upd) => setSettings(prev => ({ ...prev, ...upd }))}
           />
