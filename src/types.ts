@@ -85,7 +85,7 @@ export interface DrawingPath {
   customDash2?: number;
   customGap2?: number;
   flowSpeed: number;
-  flowDirection: 'forward' | 'reverse';
+  flowDirection: 'forward' | 'reverse' | 'bidirectional';
   showGlow: boolean;
   opacity: number;
   enabled: boolean;
@@ -135,7 +135,7 @@ export interface ChartSettings {
   customDashLength: number;
   customGapLength: number;
   flowSpeed: number;
-  flowDirection: 'forward' | 'reverse';
+  flowDirection: 'forward' | 'reverse' | 'bidirectional';
   strokeWidth: number;
   lineCap: 'butt' | 'round' | 'square';
   showGlow: boolean;

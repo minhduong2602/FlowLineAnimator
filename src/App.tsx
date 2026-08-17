@@ -641,7 +641,7 @@ export default function App() {
       paths.forEach(p => {
         const speed = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
         const dir = p.flowDirection === 'reverse' ? 1 : -1;
-        currentOffsets[p.id] = (currentOffsets[p.id] || 0) + (1 / 30) * speed * dir;
+        currentOffsets[p.id] = (currentOffsets[p.id] || 0) + (1 / 30) * speed * (p.flowDirection === 'bidirectional' ? 1 : dir);
 
         // Advance motion objects exactly like the live artboard loop does
         const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
@@ -694,6 +694,7 @@ export default function App() {
           activeTool={activeTool}
           setActiveTool={setActiveTool}
           settings={settings}
+          onUpdateSettings={(upd) => setSettings(prev => ({ ...prev, ...upd }))}
           isPlaying={isPlaying}
         />
 
@@ -715,6 +716,8 @@ export default function App() {
         pathCount={paths.filter(p => p.enabled).length}
         fps={fps}
         isPlaying={isPlaying}
+        zoom={settings.zoom ?? 1}
+        onZoomChange={(zoom) => setSettings(prev => ({ ...prev, zoom }))}
       />
 
       <ExportModal

@@ -70,8 +70,9 @@ self.onmessage = async (e: MessageEvent) => {
         const motionProgress: Record<string, number> = {};
         paths.forEach((p: DrawingPath) => {
           const flowVelocity = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
+          // bidirectional accumulates positively; drawPathToCanvas handles the second pass with -offset
           const dir = p.flowDirection === 'reverse' ? 1 : -1;
-          offsets[p.id] = timeElapsed * flowVelocity * dir;
+          offsets[p.id] = timeElapsed * flowVelocity * (p.flowDirection === 'bidirectional' ? 1 : dir);
 
           const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
           const duration = Math.max(0.5, 20 / motionSpeed);
@@ -133,8 +134,9 @@ self.onmessage = async (e: MessageEvent) => {
       
       paths.forEach((p: DrawingPath) => {
         const flowVelocity = (p.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45;
+        // bidirectional accumulates positively; drawPathToCanvas handles the second pass with -offset
         const dir = p.flowDirection === 'reverse' ? 1 : -1;
-        offsets[p.id] = timeElapsed * flowVelocity * dir;
+        offsets[p.id] = timeElapsed * flowVelocity * (p.flowDirection === 'bidirectional' ? 1 : dir);
 
         const motionSpeed = (p.motionSpeed || 1) * (settings.globalSpeed || 1);
         const duration = Math.max(0.5, 20 / motionSpeed);

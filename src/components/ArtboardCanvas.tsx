@@ -241,8 +241,9 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           if (!path.enabled) return;
           const current = prev[path.id] || 0;
           const speed = (path.flowSpeed || 1.5) * (settings.globalSpeed || 1) * 45 * dt;
+          // bidirectional always accumulates positively; SVG uses +offset and -offset for the two layers
           const direction = path.flowDirection === 'reverse' ? 1 : -1;
-          next[path.id] = current + speed * direction;
+          next[path.id] = current + speed * (path.flowDirection === 'bidirectional' ? 1 : direction);
         });
         return next;
       });
@@ -298,11 +299,27 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
       } else if (e.key.toLowerCase() === 'c') {
         setActiveTool('connector');
       }
+
+      // Zoom shortcuts: Ctrl/Cmd + / - / 0
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+      if (cmdOrCtrl) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          onUpdateSettings({ zoom: Math.min(10, (settings.zoom || 1) * 1.2) });
+        } else if (e.key === '-') {
+          e.preventDefault();
+          onUpdateSettings({ zoom: Math.max(0.1, (settings.zoom || 1) * (1 / 1.2)) });
+        } else if (e.key === '0') {
+          e.preventDefault();
+          onUpdateSettings({ zoom: 1 });
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPathId, selectedPath, selectedAnchorIndex, penAnchors, activeTool]);
+  }, [selectedPathId, selectedPath, selectedAnchorIndex, penAnchors, activeTool, settings.zoom, onUpdateSettings]);
 
   // Global mouseup to prevent stuck dragging/drawing if mouse is released outside SVG
   useEffect(() => {
@@ -1563,7 +1580,11 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             if (!path.anchors || path.anchors.length === 0) return null;
             const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
             const dashArray = getDashArray(path);
-            const offset = dashOffsets[path.id] || 0;
+            const rawOffset = dashOffsets[path.id] || 0;
+            // For bidirectional: forward layer uses +rawOffset (flows start→end), reverse layer uses -rawOffset (flows end→start)
+            // Combined they appear to emanate from the center toward both ends.
+            const isBidirectional = path.flowDirection === 'bidirectional';
+            const offset = isBidirectional ? rawOffset : rawOffset;
             const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
             const isSelected = selectedPathIds.includes(path.id);
 
@@ -1600,21 +1621,38 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
               >
               {/* Glow bloom layer */}
               {path.showGlow && (
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={strokePaint}
-                  strokeWidth={path.strokeWidth * 2.2}
-                  strokeLinecap={path.lineCap || 'round'}
-                  strokeLinejoin={path.lineJoin || 'round'}
-                  strokeDasharray={dashArray}
-                  strokeDashoffset={offset}
-                  opacity={path.opacity * 0.45}
-                  filter="url(#neon-glow)"
-                />
+                <>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={strokePaint}
+                    strokeWidth={path.strokeWidth * 2.2}
+                    strokeLinecap={path.lineCap || 'round'}
+                    strokeLinejoin={path.lineJoin || 'round'}
+                    strokeDasharray={dashArray}
+                    strokeDashoffset={offset}
+                    opacity={path.opacity * 0.45}
+                    filter="url(#neon-glow)"
+                  />
+                  {isBidirectional && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={strokePaint}
+                      strokeWidth={path.strokeWidth * 2.2}
+                      strokeLinecap={path.lineCap || 'round'}
+                      strokeLinejoin={path.lineJoin || 'round'}
+                      strokeDasharray={dashArray}
+                      strokeDashoffset={-offset}
+                      opacity={path.opacity * 0.45}
+                      filter="url(#neon-glow)"
+                    />
+                  )}
+                </>
               )}
 
               {/* Main vector stroke with endpoint caps */}
+              {/* For bidirectional: layer 1 flows forward (start→end), layer 2 flows backward (end→start) */}
               <path
                 id={`${path.id}-stroke`}
                 d={d}
@@ -1630,17 +1668,42 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 markerStart={path.startCap && path.startCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-start)` : undefined}
                 markerEnd={path.endCap && path.endCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-end)` : undefined}
               />
+              {isBidirectional && (
+                <path
+                  d={d}
+                  fill="none"
+                  stroke={strokePaint}
+                  strokeWidth={path.strokeWidth}
+                  strokeLinecap={path.lineCap || 'round'}
+                  strokeLinejoin={path.lineJoin || 'round'}
+                  strokeDasharray={dashArray}
+                  strokeDashoffset={-offset}
+                  opacity={path.opacity}
+                />
+              )}
 
               {/* Arrow Flow — animated chevrons flowing along the path */}
               {path.arrowFlow && isPlaying && (
-                <ArrowFlowOverlay
-                  pathId={`${path.id}-stroke`}
-                  color={path.color}
-                  arrowSize={path.arrowFlowSize || 14}
-                  spacing={path.arrowFlowSpacing || 70}
-                  speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
-                  reverse={path.flowDirection === 'reverse'}
-                />
+                <>
+                  <ArrowFlowOverlay
+                    pathId={`${path.id}-stroke`}
+                    color={path.color}
+                    arrowSize={path.arrowFlowSize || 14}
+                    spacing={path.arrowFlowSpacing || 70}
+                    speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
+                    reverse={path.flowDirection === 'reverse'}
+                  />
+                  {isBidirectional && (
+                    <ArrowFlowOverlay
+                      pathId={`${path.id}-stroke`}
+                      color={path.color}
+                      arrowSize={path.arrowFlowSize || 14}
+                      spacing={path.arrowFlowSpacing || 70}
+                      speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
+                      reverse={true}
+                    />
+                  )}
+                </>
               )}
 
               {/* Label */}
@@ -1976,6 +2039,22 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">P</kbd> Pen</span>
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">N</kbd> Pencil</span>
           <span><kbd className="text-[var(--color-ink)] bg-[var(--color-surface-alt)] px-1 py-0.5 rounded border border-[var(--color-hairline)]">Del</kbd> Delete</span>
+          <span className="text-[var(--color-hairline)] select-none">|</span>
+          <button
+            title="Zoom Out (Ctrl/⌘ -)" 
+            onClick={() => onUpdateSettings({ zoom: Math.max(0.1, (settings.zoom || 1) * (1/1.25)) })}
+            className="text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] transition-colors px-0.5"
+          >−</button>
+          <button
+            title="Reset zoom (Ctrl/⌘ 0)"
+            onClick={() => onUpdateSettings({ zoom: 1 })}
+            className="text-[var(--color-ink)] font-semibold tabular-nums hover:text-[#00F2FF] transition-colors min-w-[40px] text-center"
+          >{Math.round((settings.zoom || 1) * 100)}%</button>
+          <button
+            title="Zoom In (Ctrl/⌘ +)"
+            onClick={() => onUpdateSettings({ zoom: Math.min(10, (settings.zoom || 1) * 1.25) })}
+            className="text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] transition-colors px-0.5"
+          >+</button>
         </div>
       </div>
     </div>

@@ -446,6 +446,12 @@ export function drawPathToCanvas(
 
   ctx.stroke(p2d);
 
+  // Bidirectional: draw a second pass flowing in the opposite direction so dashes emanate from center
+  if (path.flowDirection === 'bidirectional' && preset && preset.id !== 'solid') {
+    ctx.lineDashOffset = -dashOffset;
+    ctx.stroke(p2d);
+  }
+
   // Draw start and end caps
   if (path.startCap && path.startCap !== 'none' || path.endCap && path.endCap !== 'none') {
     const drawMarker = (cap: string, point: Point, angle: number, isStart: boolean) => {

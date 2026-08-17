@@ -515,17 +515,26 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                               className="w-full bg-transparent text-xs text-[var(--color-ink)] focus:outline-none font-mono"
                             />
                           </div>
-                          <button
-                            onClick={() => onUpdatePath(selectedPath.id, { flowDirection: selectedPath.flowDirection === 'reverse' ? 'forward' : 'reverse' })}
-                            className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors ${
-                              selectedPath.flowDirection === 'reverse'
-                                ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
-                                : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] border-[var(--color-hairline)] hover:text-[var(--color-ink)]'
-                            }`}
-                            title="Reverse Flow Direction"
-                          >
-                            Reverse
-                          </button>
+                          <div className="flex rounded border border-[var(--color-hairline)] overflow-hidden shrink-0" title="Flow Direction">
+                            {([ 
+                              { value: 'forward',       label: '→' },
+                              { value: 'reverse',       label: '←' },
+                              { value: 'bidirectional', label: '↔' },
+                            ] as const).map(({ value, label }) => (
+                              <button
+                                key={value}
+                                onClick={() => onUpdatePath(selectedPath.id, { flowDirection: value })}
+                                title={value === 'forward' ? 'Forward' : value === 'reverse' ? 'Reverse' : 'Bidirectional (center → both ends)'}
+                                className={`text-[11px] font-bold px-2 py-1 transition-colors ${
+                                  selectedPath.flowDirection === value
+                                    ? 'bg-[var(--color-ink)] text-[var(--color-canvas)]'
+                                    : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
                         </>
                       )}
                     </div>
