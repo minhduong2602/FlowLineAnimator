@@ -670,15 +670,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           </div>
                           <div className="flex rounded border border-[var(--color-hairline)] overflow-hidden shrink-0" title="Flow Direction">
                             {([ 
-                              { value: 'forward',       label: '→' },
-                              { value: 'reverse',       label: '←' },
-                              { value: 'bidirectional', label: '↔' },
-                            ] as const).map(({ value, label }) => (
+                              { value: 'forward',               label: '→',   title: 'Forward (Start → End)' },
+                              { value: 'reverse',               label: '←',   title: 'Reverse (End → Start)' },
+                              { value: 'bidirectional',         label: '⇤⇥',  title: 'Bidirectional (Center → Both ends)' },
+                              { value: 'bidirectional-reverse', label: '⇥⇤',  title: 'Bidirectional (Both ends → Center)' },
+                            ] as const).map(({ value, label, title }) => (
                               <button
                                 key={value}
                                 onClick={() => handleBatchUpdate({ flowDirection: value })}
-                                title={value === 'forward' ? 'Forward' : value === 'reverse' ? 'Reverse' : 'Bidirectional (center → both ends)'}
-                                className={`text-[11px] font-bold px-2 py-1 transition-colors ${
+                                title={title}
+                                className={`text-[11px] font-bold px-1.5 py-1 transition-colors ${
                                   batchFlowDirection === value
                                     ? 'bg-[var(--color-ink)] text-[var(--color-canvas)]'
                                     : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'
@@ -971,12 +972,13 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                         )}
                       </div>
 
-                      {/* ── Endpoints & Caps Row: Start Cap + Swap + End Cap ── */}
-                      <div className="flex items-center gap-1.5 pt-1 border-t border-[var(--color-hairline)]/60">
+                      {/* ── Endpoints & Caps Row: Start Cap + Direction + Swap + End Cap + Direction ── */}
+                      <div className="flex items-center gap-1 pt-1 border-t border-[var(--color-hairline)]/60">
+                        {/* Start Cap Dropdown */}
                         <select
                           value={selectedPath.startCap || 'none'}
                           onChange={e => onUpdatePath(selectedPath.id, { startCap: e.target.value as CapType })}
-                          className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
+                          className="flex-1 min-w-0 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
                           title="Start Endpoint"
                         >
                           {CAP_PRESETS.map(cap => (
@@ -986,10 +988,31 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           ))}
                         </select>
 
+                        {/* Start Cap Direction Flip Button */}
+                        <button
+                          onClick={() => onUpdatePath(selectedPath.id, { startCapReverse: !selectedPath.startCapReverse })}
+                          disabled={!selectedPath.startCap || selectedPath.startCap === 'none'}
+                          className={`p-1.5 rounded border transition-colors shrink-0 text-[11px] font-bold w-6 h-6 flex items-center justify-center ${
+                            selectedPath.startCapReverse
+                              ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
+                              : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] border-[var(--color-hairline)]'
+                          } disabled:opacity-30 disabled:cursor-not-allowed`}
+                          title={
+                            selectedPath.startCapReverse
+                              ? "Start Cap: Inward (Click to point Outward)"
+                              : "Start Cap: Outward (Click to point Inward)"
+                          }
+                        >
+                          {selectedPath.startCapReverse ? '→' : '←'}
+                        </button>
+
+                        {/* Swap Caps Button */}
                         <button
                           onClick={() => onUpdatePath(selectedPath.id, {
                             startCap: selectedPath.endCap || 'none',
-                            endCap: selectedPath.startCap || 'none'
+                            endCap: selectedPath.startCap || 'none',
+                            startCapReverse: selectedPath.endCapReverse || false,
+                            endCapReverse: selectedPath.startCapReverse || false
                           })}
                           className="p-1.5 text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] bg-[var(--color-surface-alt)] hover:bg-[var(--color-hairline)] rounded border border-[var(--color-hairline)] transition-colors shrink-0"
                           title="Swap Start ↔ End Caps"
@@ -997,10 +1020,11 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           <ArrowLeftRight className="w-3.5 h-3.5" />
                         </button>
 
+                        {/* End Cap Dropdown */}
                         <select
                           value={selectedPath.endCap || 'none'}
                           onChange={e => onUpdatePath(selectedPath.id, { endCap: e.target.value as CapType })}
-                          className="flex-1 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-2 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
+                          className="flex-1 min-w-0 bg-[var(--color-surface-alt)] border border-[var(--color-hairline)] rounded px-1.5 py-1 text-xs text-[var(--color-ink)] focus:outline-none cursor-pointer truncate"
                           title="End Endpoint"
                         >
                           {CAP_PRESETS.map(cap => (
@@ -1009,6 +1033,24 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                             </option>
                           ))}
                         </select>
+
+                        {/* End Cap Direction Flip Button */}
+                        <button
+                          onClick={() => onUpdatePath(selectedPath.id, { endCapReverse: !selectedPath.endCapReverse })}
+                          disabled={!selectedPath.endCap || selectedPath.endCap === 'none'}
+                          className={`p-1.5 rounded border transition-colors shrink-0 text-[11px] font-bold w-6 h-6 flex items-center justify-center ${
+                            selectedPath.endCapReverse
+                              ? 'bg-[var(--color-ink)] text-[var(--color-canvas)] border-[var(--color-ink)]'
+                              : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)] border-[var(--color-hairline)]'
+                          } disabled:opacity-30 disabled:cursor-not-allowed`}
+                          title={
+                            selectedPath.endCapReverse
+                              ? "End Cap: Inward (Click to point Outward)"
+                              : "End Cap: Outward (Click to point Inward)"
+                          }
+                        >
+                          {selectedPath.endCapReverse ? '←' : '→'}
+                        </button>
                       </div>
                     </div>
                   </CollapsibleSection>
@@ -1043,15 +1085,16 @@ export const SidebarControls: React.FC<SidebarControlsProps> = ({
                           </div>
                           <div className="flex rounded border border-[var(--color-hairline)] overflow-hidden shrink-0" title="Flow Direction">
                             {([ 
-                              { value: 'forward',       label: '→' },
-                              { value: 'reverse',       label: '←' },
-                              { value: 'bidirectional', label: '↔' },
-                            ] as const).map(({ value, label }) => (
+                              { value: 'forward',               label: '→',   title: 'Forward (Start → End)' },
+                              { value: 'reverse',               label: '←',   title: 'Reverse (End → Start)' },
+                              { value: 'bidirectional',         label: '⇤⇥',  title: 'Bidirectional (Center → Both ends)' },
+                              { value: 'bidirectional-reverse', label: '⇥⇤',  title: 'Bidirectional (Both ends → Center)' },
+                            ] as const).map(({ value, label, title }) => (
                               <button
                                 key={value}
                                 onClick={() => onUpdatePath(selectedPath.id, { flowDirection: value })}
-                                title={value === 'forward' ? 'Forward' : value === 'reverse' ? 'Reverse' : 'Bidirectional (center → both ends)'}
-                                className={`text-[11px] font-bold px-2 py-1 transition-colors ${
+                                title={title}
+                                className={`text-[11px] font-bold px-1.5 py-1 transition-colors ${
                                   selectedPath.flowDirection === value
                                     ? 'bg-[var(--color-ink)] text-[var(--color-canvas)]'
                                     : 'bg-[var(--color-surface-alt)] text-[var(--color-mid-gray)] hover:text-[var(--color-ink)]'

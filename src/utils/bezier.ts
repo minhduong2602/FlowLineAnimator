@@ -409,7 +409,15 @@ function findCubicBezierTForLength(p0: Point, p1: Point, p2: Point, p3: Point, t
  * - path1FromCenter: starts at center M and travels towards the original start point A (M -> A)
  * - path2FromCenter: starts at center M and travels towards the original end point B (M -> B)
  */
-export function splitPathAtCenter(d: string): { path1FromCenter: string; path2FromCenter: string; centerPoint: Point; totalLength: number; halfLength: number } | null {
+export function splitPathAtCenter(d: string): { 
+  path1FromCenter: string; 
+  path2FromCenter: string; 
+  path1ToCenter: string;
+  path2ToCenter: string;
+  centerPoint: Point; 
+  totalLength: number; 
+  halfLength: number 
+} | null {
   if (!d || typeof d !== 'string') return null;
   if (splitPathCache.has(d)) {
     return splitPathCache.get(d)!;
@@ -536,9 +544,34 @@ export function splitPathAtCenter(d: string): { path1FromCenter: string; path2Fr
       }
     }
 
+    // Build path 1 Inward (Start -> Center): Sequential leftSegments
+    let path1In = leftSegments.length > 0 ? `M ${leftSegments[0].p0.x} ${leftSegments[0].p0.y}` : `M ${centerPoint.x} ${centerPoint.y}`;
+    for (const seg of leftSegments) {
+      if (seg.type === 'L') {
+        path1In += ` L ${seg.p1.x} ${seg.p1.y}`;
+      } else if (seg.type === 'C') {
+        path1In += ` C ${seg.p1.x} ${seg.p1.y}, ${seg.p2.x} ${seg.p2.y}, ${seg.p3.x} ${seg.p3.y}`;
+      }
+    }
+
+    // Build path 2 Inward (End -> Center): Reverse rightSegments
+    const lastRight = rightSegments.length > 0 ? rightSegments[rightSegments.length - 1] : null;
+    const rightEndPt = lastRight ? (lastRight.type === 'L' ? lastRight.p1 : lastRight.p3) : centerPoint;
+    let path2In = `M ${rightEndPt.x} ${rightEndPt.y}`;
+    for (let i = rightSegments.length - 1; i >= 0; i--) {
+      const seg = rightSegments[i];
+      if (seg.type === 'L') {
+        path2In += ` L ${seg.p0.x} ${seg.p0.y}`;
+      } else if (seg.type === 'C') {
+        path2In += ` C ${seg.p2.x} ${seg.p2.y}, ${seg.p1.x} ${seg.p1.y}, ${seg.p0.x} ${seg.p0.y}`;
+      }
+    }
+
     const result = {
       path1FromCenter: path1D,
       path2FromCenter: path2D,
+      path1ToCenter: path1In,
+      path2ToCenter: path2In,
       centerPoint,
       totalLength,
       halfLength
@@ -587,11 +620,11 @@ export function drawPathToCanvas(
   ctx.strokeStyle = strokeStyle;
 
   const d = anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing);
-  const isBidirectional = path.flowDirection === 'bidirectional';
+  const isBidirectional = path.flowDirection === 'bidirectional' || path.flowDirection === 'bidirectional-reverse';
   const split = isBidirectional ? splitPathAtCenter(d) : null;
   const p2d = new Path2D(d);
-  const p2dLeft = split ? new Path2D(split.path1FromCenter) : null;
-  const p2dRight = split ? new Path2D(split.path2FromCenter) : null;
+  const p2dLeft = split ? new Path2D(path.flowDirection === 'bidirectional-reverse' ? split.path1ToCenter : split.path1FromCenter) : null;
+  const p2dRight = split ? new Path2D(path.flowDirection === 'bidirectional-reverse' ? split.path2ToCenter : split.path2FromCenter) : null;
 
   // Render Glow if enabled
   if (path.showGlow) {
@@ -676,10 +709,10 @@ export function drawPathToCanvas(
 
   // Draw start and end caps
   if (path.startCap && path.startCap !== 'none' || path.endCap && path.endCap !== 'none') {
-    const drawMarker = (cap: string, point: Point, angle: number, isStart: boolean) => {
+    const drawMarker = (cap: string, point: Point, angle: number, isStart: boolean, isReversed: boolean = false) => {
       ctx.save();
       ctx.translate(point.x, point.y);
-      ctx.rotate(angle);
+      ctx.rotate(angle + (isReversed ? Math.PI : 0));
       
       const sw = path.strokeWidth || 2;
       const size = Math.max(6, sw * 3.5);
@@ -766,7 +799,7 @@ export function drawPathToCanvas(
         if (p2) {
             // angle from p1 to p2 because it's the start (forward direction)
             const angle = getAngle(p1.point, p2);
-            drawMarker(path.startCap, p1.point, angle, true);
+            drawMarker(path.startCap, p1.point, angle, true, Boolean(path.startCapReverse));
         }
     }
 
@@ -789,7 +822,7 @@ export function drawPathToCanvas(
         if (p2) {
             // angle from p2 to p1 because it's the end (forward direction)
             const angle = getAngle(p2, p1.point);
-            drawMarker(path.endCap, p1.point, angle, false);
+            drawMarker(path.endCap, p1.point, angle, false, Boolean(path.endCapReverse));
         }
     }
   }
@@ -989,7 +1022,7 @@ export function renderArtboardToCanvas(
 
         // ── Render Animated Chevrons (Arrow Flow) ──
         if (path.arrowFlow) {
-          const isBidirectional = path.flowDirection === 'bidirectional';
+          const isBidirectional = path.flowDirection === 'bidirectional' || path.flowDirection === 'bidirectional-reverse';
           const pathD = path.anchors && path.anchors.length > 0
             ? anchorsToPathString(path.anchors, path.closed, path.cornerRadius || 0, path.routing)
             : '';
@@ -1059,8 +1092,13 @@ export function renderArtboardToCanvas(
           };
 
           if (split) {
-            renderChevronsForNode(new svgPathProperties(split.path1FromCenter), false);
-            renderChevronsForNode(new svgPathProperties(split.path2FromCenter), false);
+            if (path.flowDirection === 'bidirectional-reverse') {
+              renderChevronsForNode(new svgPathProperties(split.path1ToCenter), false);
+              renderChevronsForNode(new svgPathProperties(split.path2ToCenter), false);
+            } else {
+              renderChevronsForNode(new svgPathProperties(split.path1FromCenter), false);
+              renderChevronsForNode(new svgPathProperties(split.path2FromCenter), false);
+            }
           } else {
             const svgPathNode = getSvgPathNode();
             if (svgPathNode) {

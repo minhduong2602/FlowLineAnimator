@@ -41,7 +41,9 @@ const ArrowFlowOverlay = React.memo<{
     <g className="pointer-events-none">
       {Array.from({ length: arrowCount }).map((_, i) => {
         const half = arrowSize / 2;
-        const pts = `0,${half * 0.2} ${arrowSize},${half} 0,${half * 1.8}`;
+        const pts = reverse
+          ? `${arrowSize},${half * 0.2} 0,${half} ${arrowSize},${half * 1.8}`
+          : `0,${half * 0.2} ${arrowSize},${half} 0,${half * 1.8}`;
 
         return (
           <polyline
@@ -204,7 +206,8 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
     paths.forEach(p => {
       if (!p.anchors || p.anchors.length === 0) return;
       const d = anchorsToPathString(p.anchors, p.closed, p.cornerRadius || 0, p.routing);
-      const split = p.flowDirection === 'bidirectional' ? splitPathAtCenter(d) : null;
+      const isBidirectional = p.flowDirection === 'bidirectional' || p.flowDirection === 'bidirectional-reverse';
+      const split = isBidirectional ? splitPathAtCenter(d) : null;
       map[p.id] = { d, split };
     });
     return map;
@@ -1404,24 +1407,32 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             const mId = path.id.replace(/[^a-zA-Z0-9]/g, '_');
             const markers: React.ReactNode[] = [];
 
-            const buildMarker = (cap: CapType, isStart: boolean) => {
-              const side = isStart ? 'start' : 'end';
+            const buildMarker = (cap: CapType, isStart: boolean, isReversed: boolean = false, customId?: string) => {
+              const side = customId || (isStart ? 'start' : 'end');
               const id = `marker-${mId}-${side}`;
               const size = Math.max(6, sw * 3.5);
               const half = size / 2;
 
               if (cap === 'none') return null;
               if (cap === 'arrow') {
+                const points = (isStart ? !isReversed : isReversed)
+                  ? `${size},0 0,${half} ${size},${size}`
+                  : `0,0 ${size},${half} 0,${size}`;
+                const refX = (isStart ? !isReversed : isReversed) ? 0 : size;
                 return (
-                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
-                    <polyline points={isStart ? `${size},0 0,${half} ${size},${size}` : `0,0 ${size},${half} 0,${size}`} fill="none" stroke={path.color} strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round" />
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={refX} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <polyline points={points} fill="none" stroke={path.color} strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round" />
                   </marker>
                 );
               }
               if (cap === 'solidArrow') {
+                const points = (isStart ? !isReversed : isReversed)
+                  ? `${size},0 0,${half} ${size},${size}`
+                  : `0,0 ${size},${half} 0,${size}`;
+                const refX = (isStart ? !isReversed : isReversed) ? 0 : size;
                 return (
-                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={isStart ? 0 : size} refY={half} orient="auto" markerUnits="userSpaceOnUse">
-                    <polygon points={isStart ? `${size},0 0,${half} ${size},${size}` : `0,0 ${size},${half} 0,${size}`} fill={path.color} />
+                  <marker key={id} id={id} markerWidth={size} markerHeight={size} refX={refX} refY={half} orient="auto" markerUnits="userSpaceOnUse">
+                    <polygon points={points} fill={path.color} />
                   </marker>
                 );
               }
@@ -1457,12 +1468,18 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             };
 
             if (path.startCap && path.startCap !== 'none') {
-              const m = buildMarker(path.startCap, true);
-              if (m) markers.push(m);
+              const mStart = buildMarker(path.startCap, true, Boolean(path.startCapReverse), 'start');
+              if (mStart) markers.push(mStart);
+              // When used as the end marker of an outward subpath (path1FromCenter)
+              const mStartAsEnd = buildMarker(path.startCap, false, Boolean(path.startCapReverse), 'start-as-end');
+              if (mStartAsEnd) markers.push(mStartAsEnd);
             }
             if (path.endCap && path.endCap !== 'none') {
-              const m = buildMarker(path.endCap, false);
-              if (m) markers.push(m);
+              const mEnd = buildMarker(path.endCap, false, Boolean(path.endCapReverse), 'end');
+              if (mEnd) markers.push(mEnd);
+              // When used as the start marker of an inward subpath (path2ToCenter)
+              const mEndAsStart = buildMarker(path.endCap, true, Boolean(path.endCapReverse), 'end-as-start');
+              if (mEndAsStart) markers.push(mEndAsStart);
             }
             return <React.Fragment key={path.id}>{markers}</React.Fragment>;
           })}
@@ -1588,7 +1605,7 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
             const { d, split } = cached;
             const dashArray = getDashArray(path);
             const offset = dashOffsets[path.id] || 0;
-            const isBidirectional = path.flowDirection === 'bidirectional';
+            const isBidirectional = path.flowDirection === 'bidirectional' || path.flowDirection === 'bidirectional-reverse';
             const strokePaint = path.gradientId ? `url(#grad-${path.gradientId})` : path.color;
             const isSelected = selectedPathIds.includes(path.id);
 
@@ -1681,92 +1698,101 @@ export const ArtboardCanvas: React.FC<ArtboardCanvasProps> = ({
                 </>
               )}
 
-              {/* 2-way / Bidirectional rendering: cut in center -> 2 lines flowing from center point outwards */}
-              {isBidirectional && split && (
-                <>
-                  {/* Glow bloom layers for both halves */}
-                  {path.showGlow && (
-                    <>
-                      <path
-                        d={split.path1FromCenter}
-                        fill="none"
-                        stroke={strokePaint}
-                        strokeWidth={path.strokeWidth * 2.2}
-                        strokeLinecap={path.lineCap || 'round'}
-                        strokeLinejoin={path.lineJoin || 'round'}
-                        strokeDasharray={dashArray}
-                        strokeDashoffset={offset}
-                        opacity={path.opacity * 0.45}
-                        filter="url(#neon-glow)"
-                      />
-                      <path
-                        d={split.path2FromCenter}
-                        fill="none"
-                        stroke={strokePaint}
-                        strokeWidth={path.strokeWidth * 2.2}
-                        strokeLinecap={path.lineCap || 'round'}
-                        strokeLinejoin={path.lineJoin || 'round'}
-                        strokeDasharray={dashArray}
-                        strokeDashoffset={offset}
-                        opacity={path.opacity * 0.45}
-                        filter="url(#neon-glow)"
-                      />
-                    </>
-                  )}
+              {/* 2-way / Bidirectional rendering: cut in center -> 2 lines flowing from center point outwards or from ends to center */}
+              {isBidirectional && split && (() => {
+                const isInward = path.flowDirection === 'bidirectional-reverse';
+                const leftD = isInward ? split.path1ToCenter : split.path1FromCenter;
+                const rightD = isInward ? split.path2ToCenter : split.path2FromCenter;
+                const mId = path.id.replace(/[^a-zA-Z0-9]/g, '_');
 
-                  {/* Left half: starts at Center M, flows to Start A */}
-                  <path
-                    id={`${path.id}-stroke-left`}
-                    d={split.path1FromCenter}
-                    fill="none"
-                    stroke={strokePaint}
-                    strokeWidth={path.strokeWidth}
-                    strokeLinecap={path.lineCap || 'round'}
-                    strokeLinejoin={path.lineJoin || 'round'}
-                    strokeDasharray={dashArray}
-                    strokeDashoffset={offset}
-                    opacity={path.opacity}
-                    markerEnd={path.startCap && path.startCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-start)` : undefined}
-                  />
+                return (
+                  <>
+                    {/* Glow bloom layers for both halves */}
+                    {path.showGlow && (
+                      <>
+                        <path
+                          d={leftD}
+                          fill="none"
+                          stroke={strokePaint}
+                          strokeWidth={path.strokeWidth * 2.2}
+                          strokeLinecap={path.lineCap || 'round'}
+                          strokeLinejoin={path.lineJoin || 'round'}
+                          strokeDasharray={dashArray}
+                          strokeDashoffset={offset}
+                          opacity={path.opacity * 0.45}
+                          filter="url(#neon-glow)"
+                        />
+                        <path
+                          d={rightD}
+                          fill="none"
+                          stroke={strokePaint}
+                          strokeWidth={path.strokeWidth * 2.2}
+                          strokeLinecap={path.lineCap || 'round'}
+                          strokeLinejoin={path.lineJoin || 'round'}
+                          strokeDasharray={dashArray}
+                          strokeDashoffset={offset}
+                          opacity={path.opacity * 0.45}
+                          filter="url(#neon-glow)"
+                        />
+                      </>
+                    )}
 
-                  {/* Right half: starts at Center M, flows to End B */}
-                  <path
-                    id={`${path.id}-stroke-right`}
-                    d={split.path2FromCenter}
-                    fill="none"
-                    stroke={strokePaint}
-                    strokeWidth={path.strokeWidth}
-                    strokeLinecap={path.lineCap || 'round'}
-                    strokeLinejoin={path.lineJoin || 'round'}
-                    strokeDasharray={dashArray}
-                    strokeDashoffset={offset}
-                    opacity={path.opacity}
-                    markerEnd={path.endCap && path.endCap !== 'none' ? `url(#marker-${path.id.replace(/[^a-zA-Z0-9]/g,'_')}-end)` : undefined}
-                  />
+                    {/* Left half: Center -> Start (outward) OR Start -> Center (inward) */}
+                    <path
+                      id={`${path.id}-stroke-left`}
+                      d={leftD}
+                      fill="none"
+                      stroke={strokePaint}
+                      strokeWidth={path.strokeWidth}
+                      strokeLinecap={path.lineCap || 'round'}
+                      strokeLinejoin={path.lineJoin || 'round'}
+                      strokeDasharray={dashArray}
+                      strokeDashoffset={offset}
+                      opacity={path.opacity}
+                      markerStart={isInward && path.startCap && path.startCap !== 'none' ? `url(#marker-${mId}-start)` : undefined}
+                      markerEnd={!isInward && path.startCap && path.startCap !== 'none' ? `url(#marker-${mId}-start-as-end)` : undefined}
+                    />
 
-                  {/* Arrow Flow: animated chevrons flowing outward from center to both ends */}
-                  {path.arrowFlow && isPlaying && (
-                    <>
-                      <ArrowFlowOverlay
-                        pathId={`${path.id}-stroke-left`}
-                        color={path.color}
-                        arrowSize={path.arrowFlowSize || 14}
-                        spacing={path.arrowFlowSpacing || 70}
-                        speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
-                        reverse={false}
-                      />
-                      <ArrowFlowOverlay
-                        pathId={`${path.id}-stroke-right`}
-                        color={path.color}
-                        arrowSize={path.arrowFlowSize || 14}
-                        spacing={path.arrowFlowSpacing || 70}
-                        speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
-                        reverse={false}
-                      />
-                    </>
-                  )}
-                </>
-              )}
+                    {/* Right half: Center -> End (outward) OR End -> Center (inward) */}
+                    <path
+                      id={`${path.id}-stroke-right`}
+                      d={rightD}
+                      fill="none"
+                      stroke={strokePaint}
+                      strokeWidth={path.strokeWidth}
+                      strokeLinecap={path.lineCap || 'round'}
+                      strokeLinejoin={path.lineJoin || 'round'}
+                      strokeDasharray={dashArray}
+                      strokeDashoffset={offset}
+                      opacity={path.opacity}
+                      markerStart={isInward && path.endCap && path.endCap !== 'none' ? `url(#marker-${mId}-end-as-start)` : undefined}
+                      markerEnd={!isInward && path.endCap && path.endCap !== 'none' ? `url(#marker-${mId}-end)` : undefined}
+                    />
+
+                    {/* Arrow Flow: animated chevrons flowing along both halves */}
+                    {path.arrowFlow && isPlaying && (
+                      <>
+                        <ArrowFlowOverlay
+                          pathId={`${path.id}-stroke-left`}
+                          color={path.color}
+                          arrowSize={path.arrowFlowSize || 14}
+                          spacing={path.arrowFlowSpacing || 70}
+                          speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
+                          reverse={false}
+                        />
+                        <ArrowFlowOverlay
+                          pathId={`${path.id}-stroke-right`}
+                          color={path.color}
+                          arrowSize={path.arrowFlowSize || 14}
+                          spacing={path.arrowFlowSpacing || 70}
+                          speed={(path.flowSpeed || 1.5) * (settings.globalSpeed || 1)}
+                          reverse={false}
+                        />
+                      </>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Label */}
               {path.label && (

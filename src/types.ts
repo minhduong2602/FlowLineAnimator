@@ -85,7 +85,7 @@ export interface DrawingPath {
   customDash2?: number;
   customGap2?: number;
   flowSpeed: number;
-  flowDirection: 'forward' | 'reverse' | 'bidirectional';
+  flowDirection: 'forward' | 'reverse' | 'bidirectional' | 'bidirectional-reverse';
   showGlow: boolean;
   opacity: number;
   enabled: boolean;
@@ -93,6 +93,8 @@ export interface DrawingPath {
   // Endpoint caps (Figma-style)
   startCap?: CapType;
   endCap?: CapType;
+  startCapReverse?: boolean;
+  endCapReverse?: boolean;
   // Arrow flow animation: repeating animated arrows along path
   arrowFlow?: boolean;
   arrowFlowSize?: number;    // arrow head size px (default 12)
@@ -135,7 +137,7 @@ export interface ChartSettings {
   customDashLength: number;
   customGapLength: number;
   flowSpeed: number;
-  flowDirection: 'forward' | 'reverse' | 'bidirectional';
+  flowDirection: 'forward' | 'reverse' | 'bidirectional' | 'bidirectional-reverse';
   strokeWidth: number;
   lineCap: 'butt' | 'round' | 'square';
   showGlow: boolean;
